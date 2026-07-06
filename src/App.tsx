@@ -205,7 +205,6 @@ export default function App() {
                   Gemini API
                 </span>
               </h1>
-              <p className="text-[11px] text-slate-400">Convert voice recording to clear point-form lists instantly</p>
             </div>
           </div>
 
@@ -305,16 +304,9 @@ export default function App() {
               <div className="space-y-8">
                 {/* Visual Intro banner */}
                 <div className="text-center max-w-xl mx-auto space-y-3 pt-4">
-                  <div className="inline-flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-full px-3 py-1 text-xs text-slate-300">
-                    <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                    Powered by Google Gemini 3.5 API
-                  </div>
                   <h2 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
                     Audio to Text Point Form
                   </h2>
-                  <p className="text-slate-400 text-sm leading-relaxed">
-                    Record meetings, ideas, or lectures. Gemini will automatically transcribe and format the spoken content into a clean, point-form bulleted list instantly.
-                  </p>
                 </div>
 
                 <MeetingRecorder onMeetingProcessed={handleMeetingProcessed} />
@@ -337,23 +329,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Footer Status Indicators */}
-      <footer className="border-t border-slate-900 bg-slate-950 py-6 text-xs text-slate-500 mt-12">
-        <div className="max-w-4xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-            <span>All AI pipelines secure and operating server-side</span>
-          </div>
 
-          <div className="flex items-center gap-1.5 font-mono">
-            <span>Powered by</span>
-            <span className="text-indigo-400 font-semibold flex items-center gap-1">
-              Gemini 3.5-flash
-              <Sparkles className="w-3 h-3 animate-pulse" />
-            </span>
-          </div>
-        </div>
-      </footer>
 
       {/* Custom Confirmation Modal for Deletion */}
       {deleteConfirmId && (() => {

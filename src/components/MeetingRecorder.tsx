@@ -376,9 +376,6 @@ export default function MeetingRecorder({ onMeetingProcessed }: MeetingRecorderP
               <Sparkles className="w-5 h-5 text-indigo-400" />
               New Audio Conversion
             </h2>
-            <p className="text-slate-400 text-xs">
-              Record conversations, meetings, or voice memos, or upload existing audio files to convert them into point-form text instantly.
-            </p>
           </div>
 
           {/* MODE SELECTOR TABS */}
