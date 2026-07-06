@@ -1,0 +1,6 @@
+{
+  "name": "Meeting Recorder & Summarizer",
+  "description": "Record audio of your meetings, view live visualizations, generate timestamped transcripts, summarize key points, and extract action items instantly with Gemini.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

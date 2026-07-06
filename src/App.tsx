@@ -1,0 +1,457 @@
+import { useState, useEffect } from "react";
+import { Mic, History, Sparkles, X, Trash2, CheckCircle2, Info, Sun, Moon } from "lucide-react";
+import { RecordItem } from "./types";
+import MeetingRecorder from "./components/MeetingRecorder";
+import MeetingHistory from "./components/MeetingHistory";
+import MeetingDetail from "./components/MeetingDetail";
+import RecycleBin from "./components/RecycleBin";
+
+// Default Seed Record to showcase the point-form format on first launch
+const SEED_RECORD: RecordItem = {
+  id: "seed-project-genesis-kickoff",
+  title: "Project Genesis Technical Kickoff",
+  date: "Wednesday, July 1, 2026 at 02:30 PM",
+  duration: 245, // 4m 5s
+  points: [
+    "Sarah welcomed the team to the Project Genesis Technical Kickoff to align on core architecture and Sprint 1 targets.",
+    "Marcus proposed utilizing a relational database model for core transaction state, keeping log data denormalized to avoid joins.",
+    "Elena confirmed that a modular React + Express server structure delivers low-latency performance and fits container workloads.",
+    "The team agreed to deploy Gemini 3.5-flash server-side for secure meeting transcription and prompt processing.",
+    "Elena took the task to set up the container configuration, aiming to have a working container demo live by Friday EOD.",
+    "Marcus committed to completing the initial relational schemas and schema migrations by next Wednesday."
+  ],
+  summary: "Sarah welcomed the team to the Project Genesis Technical Kickoff to align on core architecture and Sprint 1 targets. The team discussed and agreed to use a relational database for core transaction state while keeping log data denormalized. Elena and Marcus will lead container setup and relational schema definitions, respectively, with prototypes expected by Friday and next Wednesday.",
+  keyPoints: [
+    "ACID-compliant relational database model will be used for transactions.",
+    "Denormalized tables will be used for logs to optimize retrieval performance.",
+    "Application architecture consists of a React frontend and modular Express backend.",
+    "Gemini 3.5-flash will be deployed server-side for transcription and summaries.",
+    "Elena will deploy the initial container demo by this Friday EOD.",
+    "Marcus will write relational schemas and migrations by next Wednesday."
+  ],
+  transcript: "Sarah: Hello everyone, welcome to the technical kickoff for Project Genesis. Our goal today is to align on the core architecture and establish our deliverables for Sprint 1. Marcus, do you want to start with the database design?\n\nMarcus: Sure, Sarah. For the core transaction state, I highly recommend using a relational database model to guarantee data integrity and strict ACID compliance. For log data and audits, however, we should keep it denormalized to avoid performance bottlenecks and complex SQL joins.\n\nElena: That makes sense, Marcus. On the application side, I propose a modular React frontend communicating with an Express backend server. This structure is lightweight, provides low-latency API routes, and fits neatly into containerized container workloads.\n\nSarah: Excellent. What about transcription and AI features? Are we using the Gemini API?\n\nElena: Yes. We will deploy Gemini 3.5-flash server-side. This keeps our API keys secure and allows us to send audio data directly for speech-to-text processing. I will take on the task of setting up the containerized deployment environment and hope to have a working container demo live by this Friday EOD.\n\nMarcus: Sounds perfect. I'll take the action item to complete the initial relational database schemas and write the migration scripts. I will have those ready by next Wednesday.\n\nSarah: Fantastic. Let's get to work!",
+  languageHint: "English"
+};
+
+export default function App() {
+  const [meetings, setMeetings] = useState<RecordItem[]>([]);
+  const [recycledMeetings, setRecycledMeetings] = useState<RecordItem[]>([]);
+  const [currentView, setCurrentView] = useState<"record" | "history" | "recycle">("record");
+  const [selectedMeeting, setSelectedMeeting] = useState<RecordItem | null>(null);
+  const [toast, setToast] = useState<{ title: string; message: string; type: "success" | "error" | "info" } | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    const saved = localStorage.getItem("meeting_recorder_summarizer_theme");
+    return (saved as "dark" | "light") || "dark";
+  });
+
+  // Apply theme to document classes
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    if (theme === "light") {
+      root.classList.add("light-mode");
+      body.classList.add("light-mode");
+    } else {
+      root.classList.remove("light-mode");
+      body.classList.remove("light-mode");
+    }
+    localStorage.setItem("meeting_recorder_summarizer_theme", theme);
+  }, [theme]);
+
+  // Load meetings from LocalStorage on initialization
+  useEffect(() => {
+    const stored = localStorage.getItem("meeting_recorder_summarizer_meetings");
+    if (stored) {
+      try {
+        setMeetings(JSON.parse(stored));
+      } catch (err) {
+        console.error("Failed to parse stored meetings:", err);
+        setMeetings([SEED_RECORD]);
+      }
+    } else {
+      // Seed default meeting on very first open
+      setMeetings([SEED_RECORD]);
+      localStorage.setItem("meeting_recorder_summarizer_meetings", JSON.stringify([SEED_RECORD]));
+    }
+
+    const storedRecycled = localStorage.getItem("meeting_recorder_summarizer_recycled_meetings");
+    if (storedRecycled) {
+      try {
+        setRecycledMeetings(JSON.parse(storedRecycled));
+      } catch (err) {
+        console.error("Failed to parse stored recycled meetings:", err);
+        setRecycledMeetings([]);
+      }
+    }
+  }, []);
+
+  // Auto-dismiss toast notification after 4 seconds
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => {
+        setToast(null);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  // Save meetings helper
+  const saveMeetings = (updatedMeetings: RecordItem[]) => {
+    setMeetings(updatedMeetings);
+    localStorage.setItem("meeting_recorder_summarizer_meetings", JSON.stringify(updatedMeetings));
+  };
+
+  // Save recycled meetings helper
+  const saveRecycledMeetings = (updatedRecycled: RecordItem[]) => {
+    setRecycledMeetings(updatedRecycled);
+    localStorage.setItem("meeting_recorder_summarizer_recycled_meetings", JSON.stringify(updatedRecycled));
+  };
+
+  const showToast = (title: string, message: string, type: "success" | "error" | "info" = "success") => {
+    setToast({ title, message, type });
+  };
+
+  const handleMeetingProcessed = (newMeeting: RecordItem) => {
+    const nextMeetings = [newMeeting, ...meetings];
+    saveMeetings(nextMeetings);
+    setSelectedMeeting(newMeeting);
+    showToast(
+      "Conversion Complete",
+      `"${newMeeting.title}" has been successfully converted into point form.`,
+      "success"
+    );
+  };
+
+  const handleDeleteMeeting = (id: string) => {
+    const meetingToRecycle = meetings.find((m) => m.id === id);
+    if (!meetingToRecycle) return;
+
+    const nextMeetings = meetings.filter((m) => m.id !== id);
+    saveMeetings(nextMeetings);
+
+    const nextRecycled = [meetingToRecycle, ...recycledMeetings];
+    saveRecycledMeetings(nextRecycled);
+
+    if (selectedMeeting?.id === id) {
+      setSelectedMeeting(null);
+    }
+
+    showToast(
+      "Moved to Recycle Bin",
+      `"${meetingToRecycle.title}" has been moved to the Recycle Bin.`,
+      "info"
+    );
+  };
+
+  const handleDeletePermanently = (id: string) => {
+    setDeleteConfirmId(id);
+  };
+
+  const confirmDelete = () => {
+    if (!deleteConfirmId) return;
+    const deletedMeeting = recycledMeetings.find((m) => m.id === deleteConfirmId);
+    if (deletedMeeting) {
+      const nextRecycled = recycledMeetings.filter((m) => m.id !== deleteConfirmId);
+      saveRecycledMeetings(nextRecycled);
+      showToast(
+        "Permanently Deleted",
+        `"${deletedMeeting.title}" has been permanently removed.`,
+        "error"
+      );
+    }
+    setDeleteConfirmId(null);
+  };
+
+  const handleRestoreMeeting = (id: string) => {
+    const meetingToRestore = recycledMeetings.find((m) => m.id === id);
+    if (!meetingToRestore) return;
+
+    const nextRecycled = recycledMeetings.filter((m) => m.id !== id);
+    saveRecycledMeetings(nextRecycled);
+
+    const nextMeetings = [meetingToRestore, ...meetings];
+    saveMeetings(nextMeetings);
+
+    showToast(
+      "Session Restored",
+      `"${meetingToRestore.title}" has been restored to Saved Sessions.`,
+      "success"
+    );
+  };
+
+  const handleEmptyBin = () => {
+    saveRecycledMeetings([]);
+    showToast(
+      "Recycle Bin Emptied",
+      "All sessions in the Recycle Bin have been permanently deleted.",
+      "error"
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased">
+      {/* Top Banner and Navigation */}
+      <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-gradient-to-tr from-indigo-600 to-sky-500 p-2.5 rounded-xl shadow-lg shadow-indigo-600/10">
+              <Mic className="w-5 h-5 text-white animate-pulse" />
+            </div>
+            <div>
+              <h1 id="app-logo-title" className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+                Audio to Point Form
+                <span className="bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono uppercase tracking-wider">
+                  Gemini API
+                </span>
+              </h1>
+              <p className="text-[11px] text-slate-400">Convert voice recording to clear point-form lists instantly</p>
+            </div>
+          </div>
+
+          {/* Nav Links */}
+          <div className="flex items-center gap-2 bg-slate-900/60 border border-slate-800 p-1.5 rounded-xl">
+            <button
+              id="nav-record-button"
+              onClick={() => {
+                setSelectedMeeting(null);
+                setCurrentView("record");
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+                currentView === "record" && !selectedMeeting
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Mic className="w-3.5 h-3.5" />
+              New Recording
+            </button>
+
+            <button
+              id="nav-history-button"
+              onClick={() => {
+                setSelectedMeeting(null);
+                setCurrentView("history");
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+                currentView === "history" && !selectedMeeting
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              Saved Sessions
+              <span className="bg-slate-950 text-indigo-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-1">
+                {meetings.length}
+              </span>
+            </button>
+
+            <button
+              id="nav-recycle-button"
+              onClick={() => {
+                setSelectedMeeting(null);
+                setCurrentView("recycle");
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+                currentView === "recycle" && !selectedMeeting
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Recycle Bin
+              {recycledMeetings.length > 0 && (
+                <span className="bg-slate-950 text-red-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-1">
+                  {recycledMeetings.length}
+                </span>
+              )}
+            </button>
+
+            <div className="h-5 w-[1px] bg-slate-800/80 mx-1 shrink-0"></div>
+
+            <button
+              id="theme-toggle-button"
+              type="button"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="p-2 text-slate-400 hover:text-white rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 shrink-0"
+              title={theme === "dark" ? "Switch to High-Contrast Light Mode" : "Switch to Dark Mode"}
+              aria-label={theme === "dark" ? "Switch to High-Contrast Light Mode" : "Switch to Dark Mode"}
+            >
+              {theme === "dark" ? (
+                <Sun className="w-4 h-4 text-amber-400" />
+              ) : (
+                <Moon className="w-4 h-4 text-indigo-400" />
+              )}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
+        {selectedMeeting ? (
+          <div className="animate-fade-in">
+            <MeetingDetail
+              meeting={selectedMeeting}
+              onBack={() => {
+                setSelectedMeeting(null);
+                setCurrentView("history");
+              }}
+            />
+          </div>
+        ) : (
+          <div className="space-y-8 animate-fade-in">
+            {currentView === "record" ? (
+              <div className="space-y-8">
+                {/* Visual Intro banner */}
+                <div className="text-center max-w-xl mx-auto space-y-3 pt-4">
+                  <div className="inline-flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-full px-3 py-1 text-xs text-slate-300">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                    Powered by Google Gemini 3.5 API
+                  </div>
+                  <h2 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
+                    Audio to Text Point Form
+                  </h2>
+                  <p className="text-slate-400 text-sm leading-relaxed">
+                    Record meetings, ideas, or lectures. Gemini will automatically transcribe and format the spoken content into a clean, point-form bulleted list instantly.
+                  </p>
+                </div>
+
+                <MeetingRecorder onMeetingProcessed={handleMeetingProcessed} />
+              </div>
+            ) : currentView === "history" ? (
+              <MeetingHistory
+                meetings={meetings}
+                onSelectMeeting={(m) => setSelectedMeeting(m)}
+                onDeleteMeeting={handleDeleteMeeting}
+              />
+            ) : (
+              <RecycleBin
+                recycledMeetings={recycledMeetings}
+                onRestoreMeeting={handleRestoreMeeting}
+                onDeletePermanently={handleDeletePermanently}
+                onEmptyBin={handleEmptyBin}
+              />
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* Footer Status Indicators */}
+      <footer className="border-t border-slate-900 bg-slate-950 py-6 text-xs text-slate-500 mt-12">
+        <div className="max-w-4xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+            <span>All AI pipelines secure and operating server-side</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 font-mono">
+            <span>Powered by</span>
+            <span className="text-indigo-400 font-semibold flex items-center gap-1">
+              Gemini 3.5-flash
+              <Sparkles className="w-3 h-3 animate-pulse" />
+            </span>
+          </div>
+        </div>
+      </footer>
+
+      {/* Custom Confirmation Modal for Deletion */}
+      {deleteConfirmId && (() => {
+        const meetingToDelete = recycledMeetings.find(m => m.id === deleteConfirmId);
+        return (
+          <div
+            id="delete-confirmation-modal"
+            className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+          >
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl relative overflow-hidden space-y-4 animate-scale-up">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 rounded-full blur-2xl pointer-events-none"></div>
+              
+              <div className="flex items-center gap-3">
+                <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-2xl">
+                  <Trash2 className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-tight">
+                    Delete Recording Session?
+                  </h3>
+                  <p className="text-slate-400 text-xs mt-0.5">This action cannot be undone.</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-300 leading-relaxed pt-1">
+                Are you sure you want to permanently delete <span className="text-white font-semibold">"{meetingToDelete?.title || 'this session'}"</span>? This will remove all extracted point-form transcriptions immediately.
+              </p>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  id="cancel-delete-button"
+                  type="button"
+                  onClick={() => setDeleteConfirmId(null)}
+                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  id="confirm-delete-button"
+                  type="button"
+                  onClick={confirmDelete}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-red-600/10"
+                >
+                  Permanently Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Floating Interactive Toast Notifications */}
+      {toast && (
+        <div
+          id="toast-notification"
+          className={`fixed bottom-6 right-6 z-50 bg-slate-900/95 backdrop-blur-md border rounded-2xl shadow-2xl p-4 flex items-center gap-3.5 max-w-sm animate-fade-in transition-all duration-300 transform translate-y-0 border-l-4 ${
+            toast.type === "error"
+              ? "border-slate-800 border-l-red-500"
+              : toast.type === "success"
+              ? "border-slate-800 border-l-emerald-500"
+              : "border-slate-800 border-l-indigo-500"
+          }`}
+        >
+          {toast.type === "error" && (
+            <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-2 rounded-xl shrink-0">
+              <Trash2 className="w-4 h-4" />
+            </div>
+          )}
+          {toast.type === "success" && (
+            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-2 rounded-xl shrink-0">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+          )}
+          {toast.type === "info" && (
+            <div className="bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 p-2 rounded-xl shrink-0">
+              <Info className="w-4 h-4" />
+            </div>
+          )}
+          
+          <div className="flex-1 space-y-0.5 pr-2">
+            <h4 className="text-xs font-extrabold text-white uppercase tracking-wider font-mono">
+              {toast.title}
+            </h4>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              {toast.message}
+            </p>
+          </div>
+
+          <button
+            id="dismiss-toast-button"
+            onClick={() => setToast(null)}
+            className="text-slate-500 hover:text-slate-300 p-1 hover:bg-slate-800 rounded-lg transition-colors shrink-0"
+            title="Dismiss notification"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
