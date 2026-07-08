@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { Mic, History, Sparkles, X, Trash2, CheckCircle2, Info, Sun, Moon } from "lucide-react";
+import { Mic, History, Sparkles, X, Trash2, CheckCircle2, Info, Sun, Moon, LayoutDashboard, LogOut, Video, ClipboardList } from "lucide-react";
 import { RecordItem } from "./types";
 import MeetingRecorder from "./components/MeetingRecorder";
 import MeetingHistory from "./components/MeetingHistory";
 import MeetingDetail from "./components/MeetingDetail";
 import RecycleBin from "./components/RecycleBin";
+import LoginScreen from "./components/LoginScreen";
 
 // Default Seed Record to showcase the point-form format on first launch
 const SEED_RECORD: RecordItem = {
@@ -36,8 +37,16 @@ const SEED_RECORD: RecordItem = {
 export default function App() {
   const [meetings, setMeetings] = useState<RecordItem[]>([]);
   const [recycledMeetings, setRecycledMeetings] = useState<RecordItem[]>([]);
-  const [currentView, setCurrentView] = useState<"record" | "history" | "recycle">("record");
+  const [currentView, setCurrentView] = useState<"dashboard" | "record" | "history" | "recycle">("dashboard");
   const [selectedMeeting, setSelectedMeeting] = useState<RecordItem | null>(null);
+  
+  // Auth state
+  const [userEmail, setUserEmail] = useState<string | null>(() => {
+    return localStorage.getItem("meeting_recorder_summarizer_user_email");
+  });
+  
+  const [recorderViewState, setRecorderViewState] = useState<"lobby" | "meeting" | "processing">("lobby");
+  const isMeetingMode = userEmail && currentView === "record" && recorderViewState === "meeting";
   const [toast, setToast] = useState<{ title: string; message: string; type: "success" | "error" | "info" } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -112,13 +121,27 @@ export default function App() {
     setToast({ title, message, type });
   };
 
+  const handleLoginSuccess = (email: string) => {
+    setUserEmail(email);
+    localStorage.setItem("meeting_recorder_summarizer_user_email", email);
+    showToast("Access Verified", `Welcome, ${email}!`, "success");
+    setCurrentView("dashboard");
+  };
+
+  const handleLogout = () => {
+    setUserEmail(null);
+    localStorage.removeItem("meeting_recorder_summarizer_user_email");
+    setRecorderViewState("lobby");
+    showToast("Signed Out", "You have been logged out of the session.", "info");
+  };
+
   const handleMeetingProcessed = (newMeeting: RecordItem) => {
     const nextMeetings = [newMeeting, ...meetings];
     saveMeetings(nextMeetings);
     setSelectedMeeting(newMeeting);
     showToast(
       "Conversion Complete",
-      `"${newMeeting.title}" has been successfully converted into point form.`,
+      `"${newMeeting.title}" recap dossier generated successfully.`,
       "success"
     );
   };
@@ -189,16 +212,16 @@ export default function App() {
     );
   };
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased">
-      {/* Top Banner and Navigation */}
-      <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-tr from-indigo-600 to-sky-500 p-2.5 rounded-xl shadow-lg shadow-indigo-600/10">
-              <Mic className="w-5 h-5 text-white animate-pulse" />
-            </div>
-            <div>
+  // ================= RENDER UNAUTHENTICATED STATE =================
+  if (!userEmail) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased">
+        <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
+          <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-gradient-to-tr from-indigo-600 to-sky-500 p-2.5 rounded-xl shadow-lg shadow-indigo-600/10">
+                <Mic className="w-5 h-5 text-white animate-pulse" />
+              </div>
               <h1 id="app-logo-title" className="text-base font-bold text-white tracking-tight flex items-center gap-2">
                 Audio to Point Form
                 <span className="bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono uppercase tracking-wider">
@@ -207,87 +230,186 @@ export default function App() {
               </h1>
             </div>
           </div>
+        </header>
 
-          {/* Nav Links */}
-          <div className="flex items-center gap-2 bg-slate-900/60 border border-slate-800 p-1.5 rounded-xl">
+        <main className="flex-1 flex items-center justify-center p-4">
+          <LoginScreen onLoginSuccess={handleLoginSuccess} />
+        </main>
+
+        {/* Global Toast Notifications */}
+        {toast && (
+          <div
+            id="toast-notification"
+            className={`fixed bottom-6 right-6 z-50 bg-slate-900/95 backdrop-blur-md border rounded-2xl shadow-2xl p-4 flex items-center gap-3.5 max-w-sm animate-fade-in transition-all duration-300 border-l-4 ${
+              toast.type === "error"
+                ? "border-slate-800 border-l-red-500"
+                : toast.type === "success"
+                ? "border-slate-800 border-l-emerald-500"
+                : "border-slate-800 border-l-indigo-500"
+            }`}
+          >
+            <div className="flex-1 space-y-0.5 pr-2">
+              <h4 className="text-xs font-extrabold text-white uppercase tracking-wider font-mono">
+                {toast.title}
+              </h4>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                {toast.message}
+              </p>
+            </div>
             <button
-              id="nav-record-button"
-              onClick={() => {
-                setSelectedMeeting(null);
-                setCurrentView("record");
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all ${
-                currentView === "record" && !selectedMeeting
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
-                  : "text-slate-400 hover:text-white"
-              }`}
+              id="dismiss-toast-button"
+              onClick={() => setToast(null)}
+              className="text-slate-500 hover:text-slate-300 p-1 hover:bg-slate-800 rounded-lg transition-colors shrink-0"
             >
-              <Mic className="w-3.5 h-3.5" />
-              New Recording
-            </button>
-
-            <button
-              id="nav-history-button"
-              onClick={() => {
-                setSelectedMeeting(null);
-                setCurrentView("history");
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all ${
-                currentView === "history" && !selectedMeeting
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <History className="w-3.5 h-3.5" />
-              Saved Sessions
-              <span className="bg-slate-950 text-indigo-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-1">
-                {meetings.length}
-              </span>
-            </button>
-
-            <button
-              id="nav-recycle-button"
-              onClick={() => {
-                setSelectedMeeting(null);
-                setCurrentView("recycle");
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all ${
-                currentView === "recycle" && !selectedMeeting
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Recycle Bin
-              {recycledMeetings.length > 0 && (
-                <span className="bg-slate-950 text-red-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-1">
-                  {recycledMeetings.length}
-                </span>
-              )}
-            </button>
-
-            <div className="h-5 w-[1px] bg-slate-800/80 mx-1 shrink-0"></div>
-
-            <button
-              id="theme-toggle-button"
-              type="button"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="p-2 text-slate-400 hover:text-white rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 shrink-0"
-              title={theme === "dark" ? "Switch to High-Contrast Light Mode" : "Switch to Dark Mode"}
-              aria-label={theme === "dark" ? "Switch to High-Contrast Light Mode" : "Switch to Dark Mode"}
-            >
-              {theme === "dark" ? (
-                <Sun className="w-4 h-4 text-amber-400" />
-              ) : (
-                <Moon className="w-4 h-4 text-indigo-400" />
-              )}
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
-        </div>
-      </header>
+        )}
+      </div>
+    );
+  }
+
+  // ================= RENDER AUTHENTICATED STATE =================
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased">
+      {/* Top Banner and Navigation */}
+      {!isMeetingMode && (
+        <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
+          <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-gradient-to-tr from-indigo-600 to-sky-500 p-2.5 rounded-xl shadow-lg shadow-indigo-600/10">
+                <Mic className="w-5 h-5 text-white animate-pulse" />
+              </div>
+              <div>
+                <h1 id="app-logo-title" className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+                  Audio to Point Form
+                  <span className="bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono uppercase tracking-wider">
+                    Gemini API
+                  </span>
+                </h1>
+              </div>
+            </div>
+
+            {/* Right Group: Nav Links + Profile initials bubble + logout */}
+            <div className="flex items-center gap-3.5">
+              
+              {/* Nav Links */}
+              <div className="flex items-center gap-1.5 bg-slate-900/60 border border-slate-800 p-1.5 rounded-xl">
+                <button
+                  id="nav-dashboard-button"
+                  onClick={() => {
+                    setSelectedMeeting(null);
+                    setCurrentView("dashboard");
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+                    currentView === "dashboard" && !selectedMeeting
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <LayoutDashboard className="w-3.5 h-3.5" />
+                  Dashboard
+                </button>
+
+                <button
+                  id="nav-record-button"
+                  onClick={() => {
+                    setSelectedMeeting(null);
+                    setRecorderViewState("lobby");
+                    setCurrentView("record");
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+                    currentView === "record" && !selectedMeeting
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Video className="w-3.5 h-3.5" />
+                  New Recording
+                </button>
+
+                <button
+                  id="nav-history-button"
+                  onClick={() => {
+                    setSelectedMeeting(null);
+                    setCurrentView("history");
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+                    currentView === "history" && !selectedMeeting
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <History className="w-3.5 h-3.5" />
+                  Saved Sessions
+                  <span className="bg-slate-950 text-indigo-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-1">
+                    {meetings.length}
+                  </span>
+                </button>
+
+                <button
+                  id="nav-recycle-button"
+                  onClick={() => {
+                    setSelectedMeeting(null);
+                    setCurrentView("recycle");
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+                    currentView === "recycle" && !selectedMeeting
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Recycle Bin
+                  {recycledMeetings.length > 0 && (
+                    <span className="bg-slate-950 text-red-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-1">
+                      {recycledMeetings.length}
+                    </span>
+                  )}
+                </button>
+
+                <div className="h-4 w-[1px] bg-slate-800 mx-1 shrink-0"></div>
+
+                <button
+                  id="theme-toggle-button"
+                  type="button"
+                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg transition-all focus:outline-none shrink-0"
+                  title={theme === "dark" ? "Switch to Light Gold & Cream Mode" : "Switch to Dark Gold & Black Mode"}
+                >
+                  {theme === "dark" ? (
+                    <Sun className="w-3.5 h-3.5 text-amber-400" />
+                  ) : (
+                    <Moon className="w-3.5 h-3.5 text-indigo-400" />
+                  )}
+                </button>
+              </div>
+
+              {/* User Profile Pill Badge + Logout */}
+              <div className="hidden sm:flex items-center gap-2.5 bg-slate-900/60 border border-slate-800 px-3 py-1.5 rounded-xl shrink-0">
+                <div className="w-6 h-6 rounded-full bg-indigo-500/15 border border-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center text-xs">
+                  {userEmail.charAt(0).toUpperCase()}
+                </div>
+                <span className="text-slate-300 text-xs font-medium font-mono truncate max-w-[110px]" title={userEmail}>
+                  {userEmail}
+                </span>
+                <div className="h-4.5 w-[1px] bg-slate-800/80"></div>
+                <button
+                  onClick={handleLogout}
+                  className="text-slate-400 hover:text-red-400 transition-all p-0.5 hover:bg-red-500/10 rounded"
+                  title="Log Out Session"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </header>
+      )}
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
+      <main className={`flex-1 w-full ${isMeetingMode ? "max-w-none p-0" : "max-w-4xl mx-auto px-4 py-8"}`}>
         {selectedMeeting ? (
           <div className="animate-fade-in">
             <MeetingDetail
@@ -300,16 +422,116 @@ export default function App() {
           </div>
         ) : (
           <div className="space-y-8 animate-fade-in">
-            {currentView === "record" ? (
-              <div className="space-y-8">
-                {/* Visual Intro banner */}
-                <div className="text-center max-w-xl mx-auto space-y-3 pt-4">
-                  <h2 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
-                    Audio to Text Point Form
-                  </h2>
+            
+            {/* Dashboard View */}
+            {currentView === "dashboard" ? (
+              <div className="space-y-8 animate-fade-in">
+                {/* Welcome Card banner */}
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 relative overflow-hidden shadow-xl">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none"></div>
+                  
+                  <div className="space-y-3.5 relative">
+                    <span className="bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold px-3 py-1 rounded-full w-fit uppercase font-mono tracking-wider">
+                      Meeting Manager Console
+                    </span>
+                    <h2 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
+                      Welcome, <span className="text-indigo-400 font-mono text-xl md:text-2xl">{userEmail}</span>
+                    </h2>
+                    <p className="text-slate-400 text-xs md:text-sm max-w-xl leading-relaxed">
+                      Your central workspace for recording calls and extracting automated meeting dossiers. Create simulated sessions or explore archived records using Gemini AI.
+                    </p>
+                  </div>
                 </div>
 
-                <MeetingRecorder onMeetingProcessed={handleMeetingProcessed} />
+                {/* Statistics Row */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 shadow flex flex-col justify-between">
+                    <span className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider">Total Saved Sessions</span>
+                    <span className="text-3xl font-extrabold text-white mt-2 font-mono">{meetings.length}</span>
+                  </div>
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 shadow flex flex-col justify-between">
+                    <span className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider">Recycle Bin Items</span>
+                    <span className="text-3xl font-extrabold text-indigo-400 mt-2 font-mono">{recycledMeetings.length}</span>
+                  </div>
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 shadow flex flex-col justify-between">
+                    <span className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider">Active Workspace</span>
+                    <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded font-mono font-bold mt-2.5 w-fit uppercase">
+                      Gemini 3.5 Flash
+                    </span>
+                  </div>
+                </div>
+
+                {/* Quick actions cards grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                  
+                  {/* Action 1: Create simulated call */}
+                  <div className="bg-slate-900 border border-slate-800 hover:border-indigo-500/35 p-6 rounded-3xl shadow-xl flex flex-col justify-between transition-all group hover:scale-[1.01]">
+                    <div className="space-y-4">
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform">
+                        <Video className="w-6 h-6 animate-pulse" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <h3 className="text-sm md:text-base font-bold text-white group-hover:text-indigo-400 transition-colors">Simulated Meeting Room</h3>
+                        <p className="text-xs text-slate-400 leading-relaxed">
+                          Launch a Google Meet style environment. Enable camera and mic streams, start live recording, and let Gemini compile transcripts and summary timelines automatically upon call completion.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedMeeting(null);
+                        setRecorderViewState("lobby");
+                        setCurrentView("record");
+                      }}
+                      className="mt-6 w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
+                    >
+                      <Video className="w-3.5 h-3.5" />
+                      Launch Meeting Room
+                    </button>
+                  </div>
+
+                  {/* Action 2: History dossiers */}
+                  <div className="bg-slate-900 border border-slate-800 hover:border-indigo-500/35 p-6 rounded-3xl shadow-xl flex flex-col justify-between transition-all group hover:scale-[1.01]">
+                    <div className="space-y-4">
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform">
+                        <ClipboardList className="w-6 h-6" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <h3 className="text-sm md:text-base font-bold text-white group-hover:text-indigo-400 transition-colors">Saved History & Recaps</h3>
+                        <p className="text-xs text-slate-400 leading-relaxed">
+                          Review and manage your saved meeting records. Access summary digests, bullet takeaways, and full transcript texts. Export reports to PDF or copy meeting details to your clipboard.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedMeeting(null);
+                        setCurrentView("history");
+                      }}
+                      className="mt-6 w-full py-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
+                    >
+                      <History className="w-3.5 h-3.5" />
+                      Open Saved History
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+            ) : currentView === "record" ? (
+              <div className={isMeetingMode ? "w-full h-full flex-1 flex flex-col" : "space-y-8"}>
+                {/* Visual Intro banner */}
+                {!isMeetingMode && (
+                  <div className="text-center max-w-xl mx-auto space-y-3 pt-4">
+                    <h2 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
+                      Audio to Text Point Form
+                    </h2>
+                  </div>
+                )}
+
+                <MeetingRecorder
+                  onMeetingProcessed={handleMeetingProcessed}
+                  onViewStateChange={setRecorderViewState}
+                />
               </div>
             ) : currentView === "history" ? (
               <MeetingHistory
@@ -329,8 +551,6 @@ export default function App() {
         )}
       </main>
 
-
-
       {/* Custom Confirmation Modal for Deletion */}
       {deleteConfirmId && (() => {
         const meetingToDelete = recycledMeetings.find(m => m.id === deleteConfirmId);
@@ -339,7 +559,7 @@ export default function App() {
             id="delete-confirmation-modal"
             className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
           >
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl relative overflow-hidden space-y-4 animate-scale-up">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl relative overflow-hidden space-y-4">
               <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 rounded-full blur-2xl pointer-events-none"></div>
               
               <div className="flex items-center gap-3">
@@ -385,7 +605,7 @@ export default function App() {
       {toast && (
         <div
           id="toast-notification"
-          className={`fixed bottom-6 right-6 z-50 bg-slate-900/95 backdrop-blur-md border rounded-2xl shadow-2xl p-4 flex items-center gap-3.5 max-w-sm animate-fade-in transition-all duration-300 transform translate-y-0 border-l-4 ${
+          className={`fixed bottom-6 right-6 z-50 bg-slate-900/95 backdrop-blur-md border rounded-2xl shadow-2xl p-4 flex items-center gap-3.5 max-w-sm animate-fade-in transition-all duration-300 border-l-4 ${
             toast.type === "error"
               ? "border-slate-800 border-l-red-500"
               : toast.type === "success"
@@ -393,22 +613,6 @@ export default function App() {
               : "border-slate-800 border-l-indigo-500"
           }`}
         >
-          {toast.type === "error" && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-2 rounded-xl shrink-0">
-              <Trash2 className="w-4 h-4" />
-            </div>
-          )}
-          {toast.type === "success" && (
-            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-2 rounded-xl shrink-0">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-          )}
-          {toast.type === "info" && (
-            <div className="bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 p-2 rounded-xl shrink-0">
-              <Info className="w-4 h-4" />
-            </div>
-          )}
-          
           <div className="flex-1 space-y-0.5 pr-2">
             <h4 className="text-xs font-extrabold text-white uppercase tracking-wider font-mono">
               {toast.title}

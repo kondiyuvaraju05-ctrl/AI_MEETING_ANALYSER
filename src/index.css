@@ -4,6 +4,46 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Gold & Black Theme Color Mapping */
+  --color-slate-950: #000000; /* Pure Black background */
+  --color-slate-900: #090909; /* Deep charcoal */
+  --color-slate-850: #0f0f0f;
+  --color-slate-800: #161616; /* Borders and dividers */
+  --color-slate-700: #262626;
+  --color-slate-600: #404040;
+  --color-slate-500: #666666;
+  --color-slate-400: #a3a3a3; /* Muted text */
+  --color-slate-300: #d4d4d4;
+  --color-slate-200: #e5e5e5;
+  --color-slate-100: #f5f5f5; /* Primary text */
+  --color-slate-50: #fafafa;
+
+  --color-indigo-950: #1b1604;
+  --color-indigo-900: #332a07;
+  --color-indigo-850: #44370a;
+  --color-indigo-800: #55450c;
+  --color-indigo-700: #7c6512;
+  --color-indigo-600: #a38517;
+  --color-indigo-500: #d4af37; /* Primary Gold accent */
+  --color-indigo-400: #dfc264;
+  --color-indigo-300: #ebd38a;
+  --color-indigo-200: #f3e5b3;
+  --color-indigo-150: #f7edd0;
+  --color-indigo-100: #faf4e3;
+  --color-indigo-50: #fefdfa;
+
+  --color-sky-950: #1b1604;
+  --color-sky-900: #2b2207;
+  --color-sky-850: #3c2f0a;
+  --color-sky-800: #4e3d0c;
+  --color-sky-700: #735911;
+  --color-sky-600: #a37f17;
+  --color-sky-500: #d4af37;
+  --color-sky-400: #dfc264;
+  --color-sky-300: #ebd38a;
+  --color-sky-200: #f3e5b3;
+  --color-sky-100: #faf4e3;
 }
 
 body {
@@ -14,19 +54,40 @@ body {
 
 /* Accessible High-Contrast Light Mode Overrides */
 body.light-mode {
-  --color-slate-950: #f1f5f9; /* Outer background - light gray-blue */
-  --color-slate-900: #ffffff; /* Card/Panel background - pure white */
-  --color-slate-800: #cbd5e1; /* Borders - mid gray for high-contrast visible dividers */
-  --color-slate-700: #94a3b8; 
-  --color-slate-600: #64748b; 
-  --color-slate-500: #475569; /* Dark gray for secondary accents (WCAG AA pass) */
-  --color-slate-400: #334155; /* Very dark gray for muted text (WCAG AAA pass) */
-  --color-slate-300: #1e293b; /* Extremely dark gray for secondary titles */
-  --color-slate-200: #0f172a; /* Near black for headers */
-  --color-slate-100: #020617; /* Pure dark slate for maximum readability */
-  --color-slate-50: #020617;
+  --color-slate-950: #faf8f5; /* Warm soft cream background */
+  --color-slate-900: #ffffff; /* Pure white cards */
+  --color-slate-850: #fdfcfb;
+  --color-slate-800: #e8e2d5; /* Delicate warm gold-grey borders */
+  --color-slate-700: #d6ccba;
+  --color-slate-650: #c0b4a2;
+  --color-slate-600: #b0a48f;
+  --color-slate-500: #8c7f6b;
+  --color-slate-400: #5c5240; /* Dark warm bronze for muted text */
+  --color-slate-300: #3c3426;
+  --color-slate-200: #252016;
+  --color-slate-100: #120f0a; /* Dark charcoal/black for primary text */
+  --color-slate-50: #120f0a;
 
-  --color-white: #020617; /* Turn general white text into pure dark slate for perfect contrast */
+  /* Rich contrast gold accents for readability on white/cream backgrounds */
+  --color-indigo-950: #fdfbf7;
+  --color-indigo-900: #faeed0;
+  --color-indigo-850: #f7e6bb;
+  --color-indigo-800: #f2daa1;
+  --color-indigo-700: #d6b24d;
+  --color-indigo-600: #a37f17; 
+  --color-indigo-500: #8c7017; /* Dark gold for text legibility (WCAG contrast compliant) */
+  --color-indigo-400: #7c6114;
+  --color-indigo-300: #5c480f;
+
+  --color-sky-950: #fdfbf7;
+  --color-sky-900: #faeed0;
+  --color-sky-800: #f2daa1;
+  --color-sky-700: #d6b24d;
+  --color-sky-600: #a37f17;
+  --color-sky-500: #8c7017;
+  --color-sky-400: #7c6114;
+
+  --color-white: #120f0a; /* Turn general white text dark for high contrast readability */
 }
 
 /* Restore true white for solid-colored action buttons, badges, and status labels */
