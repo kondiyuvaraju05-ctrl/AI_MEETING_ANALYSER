@@ -13,11 +13,12 @@ export default function MeetingDetail({ meeting, onBack }: MeetingDetailProps) {
   const [copiedAll, setCopiedAll] = useState(false);
   const [copiedSummary, setCopiedSummary] = useState(false);
   const [copiedKeyPoints, setCopiedKeyPoints] = useState(false);
+  const [copiedActionItems, setCopiedActionItems] = useState(false);
   const [copiedTranscript, setCopiedTranscript] = useState(false);
   const [exporting, setExporting] = useState(false);
   
-  // Three-Tab navigation
-  const [activeTab, setActiveTab] = useState<"summary" | "keypoints" | "overall">("summary");
+  // Four-Tab navigation
+  const [activeTab, setActiveTab] = useState<"summary" | "keypoints" | "actionitems" | "overall">("summary");
 
   const formatDuration = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -53,6 +54,14 @@ export default function MeetingDetail({ meeting, onBack }: MeetingDetailProps) {
     setTimeout(() => setCopiedTranscript(false), 2000);
   };
 
+  const copyActionItems = () => {
+    if (!meeting.actionItems) return;
+    const text = meeting.actionItems.map((item) => `• ${item.task} (Owner: ${item.owner}, Deadline: ${item.deadline})`).join("\n");
+    navigator.clipboard.writeText(text);
+    setCopiedActionItems(true);
+    setTimeout(() => setCopiedActionItems(false), 2000);
+  };
+
   const copyAll = () => {
     let allText = `${meeting.title}\nDate: ${meeting.date}\nDuration: ${formatDuration(meeting.duration)}\n\n`;
     if (meeting.summary) {
@@ -60,6 +69,9 @@ export default function MeetingDetail({ meeting, onBack }: MeetingDetailProps) {
     }
     if (meeting.keyPoints && meeting.keyPoints.length > 0) {
       allText += `KEY POINTS\n` + meeting.keyPoints.map((p) => `• ${p}`).join("\n") + `\n\n`;
+    }
+    if (meeting.actionItems && meeting.actionItems.length > 0) {
+      allText += `ACTION ITEMS\n` + meeting.actionItems.map((item) => `• [ ] ${item.task} (Owner: ${item.owner}, Deadline: ${item.deadline})`).join("\n") + `\n\n`;
     }
     allText += `OVERALL MATTER (TIMELINE)\n` + meeting.points.map((p) => `• ${p}`).join("\n");
     if (meeting.transcript) {
@@ -69,6 +81,59 @@ export default function MeetingDetail({ meeting, onBack }: MeetingDetailProps) {
     navigator.clipboard.writeText(allText);
     setCopiedAll(true);
     setTimeout(() => setCopiedAll(false), 2500);
+  };
+
+  const exportToMarkdown = () => {
+    let md = `# ${meeting.title}\n\n`;
+    md += `**Date:** ${meeting.date}  \n`;
+    md += `**Duration:** ${formatDuration(meeting.duration)}  \n`;
+    md += `**Language:** ${meeting.languageHint || "Auto-detect"}  \n\n`;
+
+    if (meeting.summary) {
+      md += `## Recording Summary\n\n`;
+      md += `> ${meeting.summary}\n\n`;
+    }
+
+    if (meeting.keyPoints && meeting.keyPoints.length > 0) {
+      md += `## Key Takeaways\n\n`;
+      meeting.keyPoints.forEach((point) => {
+        md += `- ${point}\n`;
+      });
+      md += `\n`;
+    }
+
+    if (meeting.actionItems && meeting.actionItems.length > 0) {
+      md += `## Action Items\n\n`;
+      md += `| Task | Owner | Deadline |\n`;
+      md += `| :--- | :--- | :--- |\n`;
+      meeting.actionItems.forEach((item) => {
+        md += `| ${item.task} | **${item.owner}** | \`${item.deadline}\` |\n`;
+      });
+      md += `\n`;
+    }
+
+    if (meeting.points && meeting.points.length > 0) {
+      md += `## Discussion Timeline\n\n`;
+      meeting.points.forEach((point, index) => {
+        md += `${index + 1}. ${point}\n`;
+      });
+      md += `\n`;
+    }
+
+    if (meeting.transcript) {
+      md += `## Full Dialogue Transcript\n\n`;
+      md += `\`\`\`text\n${meeting.transcript}\n\`\`\`\n`;
+    }
+
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `${meeting.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-recap.md`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const exportToPdf = () => {
@@ -364,6 +429,15 @@ export default function MeetingDetail({ meeting, onBack }: MeetingDetailProps) {
           </button>
 
           <button
+            id="export-md-button"
+            onClick={exportToMarkdown}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 hover:bg-slate-800 active:scale-[0.98] text-slate-300 hover:text-white rounded-xl text-xs font-bold tracking-wide transition-all shadow-md"
+          >
+            <Download className="w-4 h-4 text-indigo-400" />
+            Export Markdown
+          </button>
+
+          <button
             id="export-pdf-button"
             onClick={exportToPdf}
             disabled={exporting}
@@ -375,7 +449,7 @@ export default function MeetingDetail({ meeting, onBack }: MeetingDetailProps) {
         </div>
       </div>
 
-      {/* THREE TABS NAV CONTROL */}
+      {/* FOUR TABS NAV CONTROL */}
       <div className="flex border-b border-slate-800">
         <button
           onClick={() => setActiveTab("summary")}
@@ -399,6 +473,18 @@ export default function MeetingDetail({ meeting, onBack }: MeetingDetailProps) {
         >
           <CheckCircle2 className="w-4 h-4" />
           Key Points
+        </button>
+
+        <button
+          onClick={() => setActiveTab("actionitems")}
+          className={`flex-1 pb-3 text-xs font-bold flex items-center justify-center gap-2 border-b-2 transition-all ${
+            activeTab === "actionitems"
+              ? "border-indigo-500 text-indigo-400"
+              : "border-transparent text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <ClipboardCheck className="w-4 h-4" />
+          Action Items
         </button>
 
         <button
@@ -496,7 +582,71 @@ export default function MeetingDetail({ meeting, onBack }: MeetingDetailProps) {
           </div>
         )}
 
-        {/* Tab 3: Overall Matter (Transcript & Timeline) */}
+        {/* Tab 3: Action Items */}
+        {activeTab === "actionitems" && (
+          <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-md animate-fade-in">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
+              <div className="space-y-0.5">
+                <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+                  <ClipboardCheck className="w-4.5 h-4.5 text-indigo-400" />
+                  Structured Action Items
+                </h2>
+                <p className="text-slate-400 text-[10px]">
+                  Extracted list of deliverables, owners, and targets.
+                </p>
+              </div>
+              
+              <button
+                onClick={copyActionItems}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                  copiedActionItems
+                    ? "bg-emerald-600/20 border-emerald-500/30 text-emerald-300"
+                    : "bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900 text-slate-400 hover:text-white"
+                }`}
+              >
+                {copiedActionItems ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedActionItems ? "Copied!" : "Copy Action Items"}
+              </button>
+            </div>
+
+            {meeting.actionItems && meeting.actionItems.length > 0 ? (
+              <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/40">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-900 border-b border-slate-800 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                      <th className="p-3.5">Action Task</th>
+                      <th className="p-3.5 w-32">Owner</th>
+                      <th className="p-3.5 w-32">Deadline</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-900">
+                    {meeting.actionItems.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-slate-900/30 transition-colors">
+                        <td className="p-3.5 font-medium text-slate-200 leading-relaxed">
+                          {item.task}
+                        </td>
+                        <td className="p-3.5">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                            {item.owner}
+                          </span>
+                        </td>
+                        <td className="p-3.5">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 font-mono">
+                            {item.deadline}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500 italic">No structured action items extracted.</p>
+            )}
+          </div>
+        )}
+
+        {/* Tab 4: Overall Matter (Transcript & Timeline) */}
         {activeTab === "overall" && (
           <div className="space-y-6 animate-fade-in">
             

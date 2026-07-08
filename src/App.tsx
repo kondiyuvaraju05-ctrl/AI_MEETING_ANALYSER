@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { Mic, History, Sparkles, X, Trash2, CheckCircle2, Info, Sun, Moon, LayoutDashboard, LogOut, Video, ClipboardList } from "lucide-react";
+import { Mic, History, Sparkles, X, Trash2, CheckCircle2, Info, Sun, Moon, LayoutDashboard, LogOut, Video, ClipboardList, Network } from "lucide-react";
 import { RecordItem } from "./types";
 import MeetingRecorder from "./components/MeetingRecorder";
 import MeetingHistory from "./components/MeetingHistory";
 import MeetingDetail from "./components/MeetingDetail";
 import RecycleBin from "./components/RecycleBin";
 import LoginScreen from "./components/LoginScreen";
+import ArchitectureVisualizer, { VisualizerState } from "./components/ArchitectureVisualizer";
 
 // Default Seed Record to showcase the point-form format on first launch
 const SEED_RECORD: RecordItem = {
@@ -31,21 +32,33 @@ const SEED_RECORD: RecordItem = {
     "Marcus will write relational schemas and migrations by next Wednesday."
   ],
   transcript: "Sarah: Hello everyone, welcome to the technical kickoff for Project Genesis. Our goal today is to align on the core architecture and establish our deliverables for Sprint 1. Marcus, do you want to start with the database design?\n\nMarcus: Sure, Sarah. For the core transaction state, I highly recommend using a relational database model to guarantee data integrity and strict ACID compliance. For log data and audits, however, we should keep it denormalized to avoid performance bottlenecks and complex SQL joins.\n\nElena: That makes sense, Marcus. On the application side, I propose a modular React frontend communicating with an Express backend server. This structure is lightweight, provides low-latency API routes, and fits neatly into containerized container workloads.\n\nSarah: Excellent. What about transcription and AI features? Are we using the Gemini API?\n\nElena: Yes. We will deploy Gemini 3.5-flash server-side. This keeps our API keys secure and allows us to send audio data directly for speech-to-text processing. I will take on the task of setting up the containerized deployment environment and hope to have a working container demo live by this Friday EOD.\n\nMarcus: Sounds perfect. I'll take the action item to complete the initial relational database schemas and write the migration scripts. I will have those ready by next Wednesday.\n\nSarah: Fantastic. Let's get to work!",
-  languageHint: "English"
+  languageHint: "English",
+  actionItems: [
+    { task: "Set up the containerized deployment environment and run container demo", owner: "Elena", deadline: "Friday EOD" },
+    { task: "Complete initial relational database schemas and write migration scripts", owner: "Marcus", deadline: "Next Wednesday" },
+    { task: "Coordinate Sprint 1 planning and check-in on demo progress", owner: "Sarah", deadline: "Friday Afternoon" }
+  ],
+  localOnly: false
 };
 
 export default function App() {
   const [meetings, setMeetings] = useState<RecordItem[]>([]);
   const [recycledMeetings, setRecycledMeetings] = useState<RecordItem[]>([]);
-  const [currentView, setCurrentView] = useState<"dashboard" | "record" | "history" | "recycle">("dashboard");
+  const [currentView, setCurrentView] = useState<"dashboard" | "record" | "history" | "recycle" | "architecture">("dashboard");
+  const [visualState, setVisualState] = useState<VisualizerState>("idle");
   const [selectedMeeting, setSelectedMeeting] = useState<RecordItem | null>(null);
-  
+
   // Auth state
   const [userEmail, setUserEmail] = useState<string | null>(() => {
     return localStorage.getItem("meeting_recorder_summarizer_user_email");
   });
-  
+
   const [recorderViewState, setRecorderViewState] = useState<"lobby" | "meeting" | "processing">("lobby");
+  const [isRecordingActive, setIsRecordingActive] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [localOnlyMode, setLocalOnlyMode] = useState<boolean>(() => {
+    return localStorage.getItem("meeting_recorder_local_only") === "true";
+  });
   const isMeetingMode = userEmail && currentView === "record" && recorderViewState === "meeting";
   const [toast, setToast] = useState<{ title: string; message: string; type: "success" | "error" | "info" } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -125,6 +138,8 @@ export default function App() {
     setUserEmail(email);
     localStorage.setItem("meeting_recorder_summarizer_user_email", email);
     showToast("Access Verified", `Welcome, ${email}!`, "success");
+    setVisualState("login");
+    setTimeout(() => setVisualState("idle"), 3500);
     setCurrentView("dashboard");
   };
 
@@ -240,13 +255,12 @@ export default function App() {
         {toast && (
           <div
             id="toast-notification"
-            className={`fixed bottom-6 right-6 z-50 bg-slate-900/95 backdrop-blur-md border rounded-2xl shadow-2xl p-4 flex items-center gap-3.5 max-w-sm animate-fade-in transition-all duration-300 border-l-4 ${
-              toast.type === "error"
+            className={`fixed bottom-6 right-6 z-50 bg-slate-900/95 backdrop-blur-md border rounded-2xl shadow-2xl p-4 flex items-center gap-3.5 max-w-sm animate-fade-in transition-all duration-300 border-l-4 ${toast.type === "error"
                 ? "border-slate-800 border-l-red-500"
                 : toast.type === "success"
-                ? "border-slate-800 border-l-emerald-500"
-                : "border-slate-800 border-l-indigo-500"
-            }`}
+                  ? "border-slate-800 border-l-emerald-500"
+                  : "border-slate-800 border-l-indigo-500"
+              }`}
           >
             <div className="flex-1 space-y-0.5 pr-2">
               <h4 className="text-xs font-extrabold text-white uppercase tracking-wider font-mono">
@@ -292,7 +306,7 @@ export default function App() {
 
             {/* Right Group: Nav Links + Profile initials bubble + logout */}
             <div className="flex items-center gap-3.5">
-              
+
               {/* Nav Links */}
               <div className="flex items-center gap-1.5 bg-slate-900/60 border border-slate-800 p-1.5 rounded-xl">
                 <button
@@ -301,16 +315,14 @@ export default function App() {
                     setSelectedMeeting(null);
                     setCurrentView("dashboard");
                   }}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
-                    currentView === "dashboard" && !selectedMeeting
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${currentView === "dashboard" && !selectedMeeting
                       ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
                       : "text-slate-400 hover:text-white"
-                  }`}
+                    }`}
                 >
                   <LayoutDashboard className="w-3.5 h-3.5" />
                   Dashboard
                 </button>
-
                 <button
                   id="nav-record-button"
                   onClick={() => {
@@ -318,27 +330,35 @@ export default function App() {
                     setRecorderViewState("lobby");
                     setCurrentView("record");
                   }}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
-                    currentView === "record" && !selectedMeeting
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${currentView === "record" && !selectedMeeting
                       ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
                       : "text-slate-400 hover:text-white"
-                  }`}
+                    }`}
                 >
                   <Video className="w-3.5 h-3.5" />
+                  {isRecordingActive && (
+                    <span className="flex h-1.5 w-1.5 relative shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
+                    </span>
+                  )}
                   New Recording
+                  {isRecordingActive && (
+                    <span className="text-[9px] bg-red-500/15 text-red-400 border border-red-500/20 px-1 py-0.5 rounded font-mono ml-1 font-bold">
+                      {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, "0")}
+                    </span>
+                  )}
                 </button>
-
                 <button
                   id="nav-history-button"
                   onClick={() => {
                     setSelectedMeeting(null);
                     setCurrentView("history");
                   }}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
-                    currentView === "history" && !selectedMeeting
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${currentView === "history" && !selectedMeeting
                       ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
                       : "text-slate-400 hover:text-white"
-                  }`}
+                    }`}
                 >
                   <History className="w-3.5 h-3.5" />
                   Saved Sessions
@@ -353,11 +373,10 @@ export default function App() {
                     setSelectedMeeting(null);
                     setCurrentView("recycle");
                   }}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${
-                    currentView === "recycle" && !selectedMeeting
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${currentView === "recycle" && !selectedMeeting
                       ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
                       : "text-slate-400 hover:text-white"
-                  }`}
+                    }`}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   Recycle Bin
@@ -366,6 +385,21 @@ export default function App() {
                       {recycledMeetings.length}
                     </span>
                   )}
+                </button>
+
+                <button
+                  id="nav-architecture-button"
+                  onClick={() => {
+                    setSelectedMeeting(null);
+                    setCurrentView("architecture");
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${currentView === "architecture" && !selectedMeeting
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
+                      : "text-slate-400 hover:text-white"
+                    }`}
+                >
+                  <Network className="w-3.5 h-3.5" />
+                  Architecture
                 </button>
 
                 <div className="h-4 w-[1px] bg-slate-800 mx-1 shrink-0"></div>
@@ -422,14 +456,14 @@ export default function App() {
           </div>
         ) : (
           <div className="space-y-8 animate-fade-in">
-            
+
             {/* Dashboard View */}
             {currentView === "dashboard" ? (
               <div className="space-y-8 animate-fade-in">
                 {/* Welcome Card banner */}
                 <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 relative overflow-hidden shadow-xl">
                   <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none"></div>
-                  
+
                   <div className="space-y-3.5 relative">
                     <span className="bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold px-3 py-1 rounded-full w-fit uppercase font-mono tracking-wider">
                       Meeting Manager Console
@@ -443,27 +477,72 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Statistics Row */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* Statistics & Settings Row */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Card 1: Total Saved */}
                   <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 shadow flex flex-col justify-between">
                     <span className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider">Total Saved Sessions</span>
                     <span className="text-3xl font-extrabold text-white mt-2 font-mono">{meetings.length}</span>
                   </div>
+                  
+                  {/* Card 2: Recycle Bin */}
                   <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 shadow flex flex-col justify-between">
                     <span className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider">Recycle Bin Items</span>
                     <span className="text-3xl font-extrabold text-indigo-400 mt-2 font-mono">{recycledMeetings.length}</span>
                   </div>
-                  <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 shadow flex flex-col justify-between">
-                    <span className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider">Active Workspace</span>
-                    <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded font-mono font-bold mt-2.5 w-fit uppercase">
-                      Gemini 3.5 Flash
+
+                  {/* Card 3: Offline PWA cache */}
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 shadow flex flex-col justify-between relative overflow-hidden group">
+                    <div>
+                      <span className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider block">Offline Cache</span>
+                      <span className="text-xs font-bold text-emerald-400 mt-2.5 flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg w-fit">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        PWA Cache Active
+                      </span>
+                    </div>
+                    <span className="text-[9px] text-slate-500 font-mono mt-2 block">
+                      Local database access enabled offline.
+                    </span>
+                  </div>
+
+                  {/* Card 4: Local-Only Processing Toggle (Privacy) */}
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 shadow flex flex-col justify-between relative overflow-hidden">
+                    <span className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider">Privacy & Processing</span>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-xs font-medium text-slate-300">
+                        {localOnlyMode ? "🔒 Local-Only" : "☁️ Gemini Cloud"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextState = !localOnlyMode;
+                          setLocalOnlyMode(nextState);
+                          localStorage.setItem("meeting_recorder_local_only", String(nextState));
+                          showToast(
+                            nextState ? "Local-Only Processing Enabled" : "Cloud Processing Enabled",
+                            nextState 
+                              ? "Transcriptions will run in-browser. Audio data will not leave your device."
+                              : "Transcriptions and summaries will use secure Gemini server API.",
+                            "info"
+                          );
+                        }}
+                        className={`w-10 h-6 flex items-center rounded-full p-1 cursor-pointer transition-all duration-350 ${
+                          localOnlyMode ? "bg-indigo-600 justify-end" : "bg-slate-800 justify-start"
+                        }`}
+                        title={localOnlyMode ? "Switch to Cloud Processing" : "Switch to Local-Only Processing"}
+                      >
+                        <span className="bg-white w-4 h-4 rounded-full shadow-md transition-all duration-300"></span>
+                      </button>
+                    </div>
+                    <span className="text-[9px] text-slate-500 font-mono mt-2 block">
+                      {localOnlyMode ? "Maximum Privacy: Web Speech API active." : "Deep Summaries: Gemini API active."}
                     </span>
                   </div>
                 </div>
 
                 {/* Quick actions cards grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-                  
+
                   {/* Action 1: Create simulated call */}
                   <div className="bg-slate-900 border border-slate-800 hover:border-indigo-500/35 p-6 rounded-3xl shadow-xl flex flex-col justify-between transition-all group hover:scale-[1.01]">
                     <div className="space-y-4">
@@ -527,10 +606,15 @@ export default function App() {
                     </h2>
                   </div>
                 )}
-
                 <MeetingRecorder
                   onMeetingProcessed={handleMeetingProcessed}
                   onViewStateChange={setRecorderViewState}
+                  localOnlyMode={localOnlyMode}
+                  onRecordingStatusChange={(active, duration) => {
+                    setIsRecordingActive(active);
+                    setRecordingDuration(duration);
+                  }}
+                  onVisualStateChange={setVisualState}
                 />
               </div>
             ) : currentView === "history" ? (
@@ -539,13 +623,15 @@ export default function App() {
                 onSelectMeeting={(m) => setSelectedMeeting(m)}
                 onDeleteMeeting={handleDeleteMeeting}
               />
-            ) : (
+            ) : currentView === "recycle" ? (
               <RecycleBin
                 recycledMeetings={recycledMeetings}
                 onRestoreMeeting={handleRestoreMeeting}
                 onDeletePermanently={handleDeletePermanently}
                 onEmptyBin={handleEmptyBin}
               />
+            ) : (
+              <ArchitectureVisualizer activeState={visualState} />
             )}
           </div>
         )}
@@ -561,7 +647,7 @@ export default function App() {
           >
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl relative overflow-hidden space-y-4">
               <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 rounded-full blur-2xl pointer-events-none"></div>
-              
+
               <div className="flex items-center gap-3">
                 <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-2xl">
                   <Trash2 className="w-5 h-5 animate-pulse" />
@@ -605,13 +691,12 @@ export default function App() {
       {toast && (
         <div
           id="toast-notification"
-          className={`fixed bottom-6 right-6 z-50 bg-slate-900/95 backdrop-blur-md border rounded-2xl shadow-2xl p-4 flex items-center gap-3.5 max-w-sm animate-fade-in transition-all duration-300 border-l-4 ${
-            toast.type === "error"
+          className={`fixed bottom-6 right-6 z-50 bg-slate-900/95 backdrop-blur-md border rounded-2xl shadow-2xl p-4 flex items-center gap-3.5 max-w-sm animate-fade-in transition-all duration-300 border-l-4 ${toast.type === "error"
               ? "border-slate-800 border-l-red-500"
               : toast.type === "success"
-              ? "border-slate-800 border-l-emerald-500"
-              : "border-slate-800 border-l-indigo-500"
-          }`}
+                ? "border-slate-800 border-l-emerald-500"
+                : "border-slate-800 border-l-indigo-500"
+            }`}
         >
           <div className="flex-1 space-y-0.5 pr-2">
             <h4 className="text-xs font-extrabold text-white uppercase tracking-wider font-mono">

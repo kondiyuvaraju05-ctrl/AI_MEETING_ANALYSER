@@ -1,17 +1,34 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, ScreenShare, Sparkles, Check, Globe, UploadCloud, Trash2, Volume2, AlertCircle, Play, Pause, Radio, Users, MessageSquare, Info, Star } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, ScreenShare, Sparkles, Check, Globe, UploadCloud, Trash2, Volume2, AlertCircle, Play, Pause, Radio, Users, MessageSquare, Info, Star, CheckCircle2, Network } from "lucide-react";
 import AudioVisualizer from "./AudioVisualizer";
 import { RecordItem } from "../types";
+import ArchitectureVisualizer, { VisualizerState } from "./ArchitectureVisualizer";
 
 interface MeetingRecorderProps {
   onMeetingProcessed: (record: RecordItem) => void;
   onViewStateChange?: (viewState: "lobby" | "meeting" | "processing") => void;
+  localOnlyMode: boolean;
+  onRecordingStatusChange?: (isRecording: boolean, duration: number) => void;
+  onVisualStateChange?: (state: VisualizerState) => void;
 }
 
-export default function MeetingRecorder({ onMeetingProcessed, onViewStateChange }: MeetingRecorderProps) {
+export default function MeetingRecorder({
+  onMeetingProcessed,
+  onViewStateChange,
+  localOnlyMode,
+  onRecordingStatusChange,
+  onVisualStateChange
+}: MeetingRecorderProps) {
   // Navigation states
   const [viewState, setViewState] = useState<"lobby" | "meeting" | "processing">("lobby");
   const [activeTab, setActiveTab] = useState<"record" | "upload">("record");
+  const [showVisualizerOverlay, setShowVisualizerOverlay] = useState(false);
+  const [visualState, setLocalVisualState] = useState<VisualizerState>("idle");
+
+  const setVisualState = (state: VisualizerState) => {
+    setLocalVisualState(state);
+    onVisualStateChange?.(state);
+  };
   
   // Lobby settings
   const [meetingTitle, setMeetingTitle] = useState("");
@@ -49,6 +66,19 @@ export default function MeetingRecorder({ onMeetingProcessed, onViewStateChange 
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isBotSpeaking, setIsBotSpeaking] = useState(false);
   const audioIntervalRef = useRef<number | null>(null);
+
+  // Enhancements states and refs
+  interface LiveTranscriptEntry {
+    speaker: string;
+    text: string;
+    timestamp: string;
+  }
+  const [liveTranscript, setLiveTranscript] = useState<LiveTranscriptEntry[]>([]);
+  const [lobbyMicLevel, setLobbyMicLevel] = useState(0);
+  const lobbyAnalyserRef = useRef<AnalyserNode | null>(null);
+  const lobbyAudioIntervalRef = useRef<number | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
   // Available Languages
   const languages = [
@@ -133,6 +163,215 @@ export default function MeetingRecorder({ onMeetingProcessed, onViewStateChange 
     };
   }, []);
 
+  // Bubble up recording state to parent App.tsx
+  useEffect(() => {
+    onRecordingStatusChange?.(isRecording, recordingTime);
+  }, [isRecording, recordingTime, onRecordingStatusChange]);
+
+  // Lobby microphone amplitude analyser
+  useEffect(() => {
+    if (viewState === "lobby" && streamRef.current && micActive && activeTab === "record") {
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        const audioCtx = new AudioCtx();
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 32;
+        const source = audioCtx.createMediaStreamSource(streamRef.current);
+        source.connect(analyser);
+        lobbyAnalyserRef.current = analyser;
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        lobbyAudioIntervalRef.current = window.setInterval(() => {
+          analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < bufferLength; i++) {
+            sum += dataArray[i];
+          }
+          const avg = sum / bufferLength;
+          setLobbyMicLevel(avg);
+        }, 100);
+      } catch (e) {
+        console.warn("Lobby audio checker not started:", e);
+      }
+    } else {
+      if (lobbyAudioIntervalRef.current) {
+        clearInterval(lobbyAudioIntervalRef.current);
+        lobbyAudioIntervalRef.current = null;
+      }
+      setLobbyMicLevel(0);
+    }
+
+    return () => {
+      if (lobbyAudioIntervalRef.current) {
+        clearInterval(lobbyAudioIntervalRef.current);
+        lobbyAudioIntervalRef.current = null;
+      }
+    };
+  }, [viewState, micActive, activeTab]);
+
+  // Speech Recognition control
+  const startSpeechRecognition = () => {
+    try {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) return;
+
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognition.lang = languageHint === "Auto-detect" ? "en-US" : 
+                       languageHint === "Spanish" ? "es-ES" :
+                       languageHint === "French" ? "fr-FR" :
+                       languageHint === "German" ? "de-DE" :
+                       languageHint === "Japanese" ? "ja-JP" : "en-US";
+
+      recognition.onresult = (event: any) => {
+        const resultIndex = event.resultIndex;
+        const transcriptText = event.results[resultIndex][0].transcript.trim();
+        if (transcriptText) {
+          addTranscriptEntry("You", transcriptText);
+        }
+      };
+
+      recognition.onerror = (e: any) => {
+        console.warn("Speech recognition error:", e);
+      };
+
+      recognition.onend = () => {
+        if (isRecording && micActive && recognitionRef.current === recognition) {
+          try {
+            recognition.start();
+          } catch (err) {
+            console.error("Failed to restart speech recognition:", err);
+          }
+        }
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.warn("SpeechRecognition not supported or failed to start:", err);
+    }
+  };
+
+  const stopSpeechRecognition = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+      recognitionRef.current = null;
+    }
+  };
+
+  const addTranscriptEntry = (speaker: string, text: string) => {
+    const timeStr = new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setLiveTranscript((prev) => [...prev, { speaker, text, timestamp: timeStr }]);
+  };
+
+  // Live simulation of meeting conversations & start speech recognition
+  useEffect(() => {
+    if (!isRecording) {
+      stopSpeechRecognition();
+      return;
+    }
+
+    if (micActive) {
+      startSpeechRecognition();
+    } else {
+      stopSpeechRecognition();
+    }
+
+    const simulatedDialogues = [
+      { speaker: "Sarah", text: "Welcome to the meeting, everyone! Let's align on Sprint 1 goals." },
+      { speaker: "Marcus", text: "For the backend database, a relational model is highly recommended for transactional state." },
+      { speaker: "Elena", text: "Agreed. I can containerize the Express backend with React by Friday." },
+      { speaker: "Sarah", text: "Excellent! Do we have any action items for database schema definition?" },
+      { speaker: "Marcus", text: "Yes, I will create the SQL schemas and migrations by next Wednesday." },
+      { speaker: "Elena", text: "And I will set up the pipeline script and push a demo build." },
+      { speaker: "Sarah", text: "Great, let's wrap this up. We have clear deliverables." }
+    ];
+
+    let index = 0;
+    const initialTimeout = setTimeout(() => {
+      if (index < simulatedDialogues.length) {
+        addTranscriptEntry(simulatedDialogues[index].speaker, simulatedDialogues[index].text);
+        index++;
+      }
+    }, 3000);
+
+    const interval = setInterval(() => {
+      if (index < simulatedDialogues.length) {
+        addTranscriptEntry(simulatedDialogues[index].speaker, simulatedDialogues[index].text);
+        index++;
+      } else {
+        const randomRemarks = [
+          { speaker: "Marcus", text: "We should check the API limits for Gemini requests." },
+          { speaker: "Elena", text: "I'll double check the ENV keys on the server." },
+          { speaker: "Sarah", text: "Sounds good, make sure to write unit tests for the schema helpers." }
+        ];
+        const randomIdx = Math.floor(Math.random() * randomRemarks.length);
+        addTranscriptEntry(randomRemarks[randomIdx].speaker, randomRemarks[randomIdx].text);
+      }
+    }, 15000);
+
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(interval);
+      stopSpeechRecognition();
+    };
+  }, [isRecording, micActive]);
+
+  // Auto-scroll transcription feed to bottom
+  useEffect(() => {
+    if (transcriptEndRef.current) {
+      transcriptEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [liveTranscript]);
+
+  // Local-only summarization logic fallback
+  const generateLocalSummary = (transcript: LiveTranscriptEntry[]) => {
+    const text = transcript.map(e => `${e.speaker}: ${e.text}`).join("\n\n");
+    const points = transcript.map(e => `${e.speaker} stated: "${e.text}"`);
+    
+    const summary = transcript.length > 0
+      ? `This private meeting was summarized locally on your device. Dialogue included contributions from ${Array.from(new Set(transcript.map(t => t.speaker))).join(", ")}. Primary discussion points: ${transcript.slice(0, 3).map(t => t.text).join(". ")}`
+      : "A private local meeting session was completed with no vocal dialogue captured.";
+    
+    const keyPoints = transcript.length > 0 
+      ? transcript.filter(t => t.text.length > 15).slice(0, 5).map(t => t.text)
+      : ["No local dialogue recorded."];
+    
+    const actionItems: { task: string; owner: string; deadline: string }[] = [];
+    transcript.forEach((t) => {
+      const lower = t.text.toLowerCase();
+      if (lower.includes("action item") || lower.includes("task") || lower.includes("will") || lower.includes("set up") || lower.includes("complete") || lower.includes("create")) {
+        let owner = t.speaker === "You" ? "You (Presenter)" : t.speaker;
+        let deadline = "TBD";
+        if (lower.includes("by next wednesday") || lower.includes("wednesday")) deadline = "Next Wednesday";
+        if (lower.includes("by friday") || lower.includes("friday")) deadline = "Friday EOD";
+        
+        actionItems.push({
+          task: t.text,
+          owner,
+          deadline
+        });
+      }
+    });
+
+    if (actionItems.length === 0) {
+      actionItems.push({ task: "Review local transcript logs for unassigned tasks", owner: "You (Presenter)", deadline: "TBD" });
+    }
+
+    return {
+      transcript: text,
+      summary,
+      keyPoints,
+      points: points.length > 0 ? points : ["Local recording finalized."],
+      actionItems
+    };
+  };
+
   // Handle local preview stream for Lobby
   useEffect(() => {
     if (viewState === "lobby" && activeTab === "record") {
@@ -180,6 +419,11 @@ export default function MeetingRecorder({ onMeetingProcessed, onViewStateChange 
   const joinMeeting = async () => {
     setError(null);
     setViewState("meeting");
+    
+    // Trigger visualizer path animations for Auth/Gateway -> Signaling -> Media
+    setVisualState("join");
+    setTimeout(() => setVisualState("signaling"), 1200);
+    setTimeout(() => setVisualState("media_sfu"), 2800);
     
     // Create the session stream
     try {
@@ -461,8 +705,58 @@ export default function MeetingRecorder({ onMeetingProcessed, onViewStateChange 
     setViewState("processing");
     setProcessingStep(1);
     setStatusMessage("Converting recording stream...");
+    setVisualState("gemini_process");
 
     try {
+      if (localOnlyMode) {
+        setProcessingStep(1);
+        setStatusMessage("Synthesizing local transcript...");
+        await new Promise(r => setTimeout(r, 1200));
+
+        setProcessingStep(3);
+        setStatusMessage("Parsing diarized speaker dialogs...");
+        await new Promise(r => setTimeout(r, 800));
+
+        setProcessingStep(4);
+        setStatusMessage("Compiling private meeting dossier...");
+        await new Promise(r => setTimeout(r, 600));
+
+        const localData = generateLocalSummary(liveTranscript);
+        const newRecord: RecordItem = {
+          id: crypto.randomUUID(),
+          title: meetingTitle.trim() || (activeTab === "upload" && uploadedFile ? uploadedFile.name.replace(/\.[^/.]+$/, "") : `Local Call - ${new Date().toLocaleDateString()}`),
+          date: new Date().toLocaleDateString(undefined, {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          duration: durationOverride !== undefined ? durationOverride : recordingTime,
+          points: localData.points,
+          summary: localData.summary,
+          keyPoints: localData.keyPoints,
+          transcript: localData.transcript,
+          languageHint,
+          actionItems: localData.actionItems,
+          localOnly: true
+        };
+
+        onMeetingProcessed(newRecord);
+        setVisualState("idle");
+
+        // Reset layout states
+        setMeetingTitle("");
+        setRecordingTime(0);
+        setUploadedFile(null);
+        setFileDuration(0);
+        setProcessingStep(0);
+        setLiveTranscript([]);
+        setViewState("lobby");
+        return;
+      }
+
       const base64Audio = await blobToBase64(audioBlob);
 
       setProcessingStep(2);
@@ -508,9 +802,12 @@ export default function MeetingRecorder({ onMeetingProcessed, onViewStateChange 
         keyPoints: data.keyPoints || [],
         transcript: data.transcript || "",
         languageHint,
+        actionItems: data.actionItems || [],
+        localOnly: false
       };
 
       onMeetingProcessed(newRecord);
+      setVisualState("idle");
       
       // Reset layout states
       setMeetingTitle("");
@@ -518,12 +815,14 @@ export default function MeetingRecorder({ onMeetingProcessed, onViewStateChange 
       setUploadedFile(null);
       setFileDuration(0);
       setProcessingStep(0);
+      setLiveTranscript([]);
       setViewState("lobby");
     } catch (err: any) {
       console.error("Gemini meeting processing error:", err);
       setError(err.message || "Failed to process audio. Please ensure GEMINI_API_KEY is configured.");
       setViewState("lobby");
       setProcessingStep(0);
+      setVisualState("idle");
     }
   };
 
@@ -631,6 +930,27 @@ export default function MeetingRecorder({ onMeetingProcessed, onViewStateChange 
               </div>
             )}
           </div>
+          
+          {/* Mic Quality check bar */}
+          {activeTab === "record" && (
+            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 flex flex-col gap-2">
+              <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400">
+                <span className="flex items-center gap-1">
+                  <Mic className={`w-3.5 h-3.5 ${lobbyMicLevel > 10 ? "text-indigo-400 animate-pulse" : "text-slate-500"}`} />
+                  Lobby Microphone Check
+                </span>
+                <span className="font-mono text-slate-500">
+                  {micActive ? (lobbyMicLevel > 40 ? "Excellent Input" : lobbyMicLevel > 10 ? "Good Input" : "Speak to test mic...") : "Microphone Muted"}
+                </span>
+              </div>
+              <div className="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden flex items-center">
+                <div 
+                  className="h-full bg-gradient-to-r from-emerald-500 via-indigo-500 to-indigo-400 transition-all duration-75"
+                  style={{ width: `${micActive ? Math.min(100, (lobbyMicLevel / 80) * 100) : 0}%` }}
+                />
+              </div>
+            </div>
+          )}
           
           {error && (
             <div className="bg-red-950/40 border border-red-900/60 text-red-300 rounded-2xl p-3 flex gap-2.5 text-xs animate-fade-in">
@@ -836,8 +1156,9 @@ export default function MeetingRecorder({ onMeetingProcessed, onViewStateChange 
       <div className="flex-1 flex overflow-hidden">
         
         {/* Left/Center: Video Conferencing Grid */}
-        <div className="flex-1 p-6 flex items-center justify-center bg-slate-950 overflow-y-auto">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-4xl w-full">
+        <div className="flex-1 p-6 flex flex-col lg:flex-row gap-6 bg-slate-950 overflow-y-auto items-stretch">
+          <div className="flex-1 flex items-center justify-center">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-4xl w-full">
             
             {/* Tile 1: User (You) */}
             <div className={`aspect-video rounded-xl bg-slate-900 border overflow-hidden flex items-center justify-center relative transition-all duration-300 ${
@@ -909,6 +1230,13 @@ export default function MeetingRecorder({ onMeetingProcessed, onViewStateChange 
 
           </div>
         </div>
+
+        {showVisualizerOverlay && (
+          <div className="w-full lg:w-[460px] shrink-0 flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-y-auto p-1.5 scrollbar-thin">
+            <ArchitectureVisualizer activeState={visualState} />
+          </div>
+        )}
+      </div>
 
         {/* Right Sidebar: Dedicated Recording and Transcription controls */}
         {sidebarOpen && (
@@ -1002,7 +1330,41 @@ export default function MeetingRecorder({ onMeetingProcessed, onViewStateChange 
                 )}
               </div>
 
-              <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800 text-[10px] text-slate-500 leading-relaxed flex gap-2">
+              {/* Live Transcript scrolling panel */}
+              <div className="flex-1 min-h-[140px] max-h-[220px] flex flex-col mt-4 border border-slate-800 bg-slate-950/40 rounded-xl overflow-hidden">
+                <div className="bg-slate-950 p-2 border-b border-slate-800 flex items-center justify-between shrink-0">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                    <MessageSquare className="w-3 h-3 text-indigo-400 animate-pulse" />
+                    Live Transcript Feed
+                  </span>
+                  <span className="text-[8px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-1 py-0.5 rounded font-mono font-bold">
+                    {localOnlyMode ? "Offline Local" : "Cloud Diarized"}
+                  </span>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-2.5 space-y-2 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+                  {liveTranscript.length === 0 ? (
+                    <p className="text-[10px] text-slate-500 italic text-center py-6">
+                      {isRecording ? "Waiting for conversation... Speak now." : "Join call & start rec to view feed."}
+                    </p>
+                  ) : (
+                    liveTranscript.map((entry, idx) => (
+                      <div key={idx} className="text-[10px] leading-relaxed border-b border-slate-950/30 pb-1 last:border-0">
+                        <span className={`font-bold ${
+                          entry.speaker === 'You' ? 'text-indigo-400' : 
+                          entry.speaker === 'Sarah' ? 'text-emerald-400' : 'text-amber-400'
+                        }`}>
+                          {entry.speaker} ({entry.timestamp}):
+                        </span>{' '}
+                        <span className="text-slate-300">{entry.text}</span>
+                      </div>
+                    ))
+                  )}
+                  <div ref={transcriptEndRef} />
+                </div>
+              </div>
+
+              <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800 text-[10px] text-slate-500 leading-relaxed flex gap-2 mt-4 shrink-0">
                 <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
                 <p>
                   Ending the call via the bottom panel will automatically terminate the recording and generate summaries.
@@ -1067,8 +1429,21 @@ export default function MeetingRecorder({ onMeetingProcessed, onViewStateChange 
           </button>
         </div>
 
-        {/* Right section: Sidebar toggle */}
-        <div className="flex items-center gap-2">
+        {/* Right section: Sidebar and Visualizer toggles */}
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setShowVisualizerOverlay(!showVisualizerOverlay)}
+            className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 ${
+              showVisualizerOverlay
+                ? "bg-indigo-600/15 border-indigo-500/25 text-indigo-400"
+                : "bg-slate-850 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800"
+            }`}
+            title="Toggle Live WebRTC SFU Architecture Flow"
+          >
+            <Network className={`w-4 h-4 ${showVisualizerOverlay ? "text-indigo-400 animate-pulse" : "text-slate-400"}`} />
+            <span>Architecture Flow</span>
+          </button>
+
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 ${

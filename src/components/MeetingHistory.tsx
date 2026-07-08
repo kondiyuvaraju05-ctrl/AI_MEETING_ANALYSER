@@ -10,6 +10,8 @@ interface MeetingHistoryProps {
 
 export default function MeetingHistory({ meetings, onSelectMeeting, onDeleteMeeting }: MeetingHistoryProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [dateFilter, setDateFilter] = useState<"all" | "today" | "week" | "older">("all");
+  const [durationFilter, setDurationFilter] = useState<"all" | "short" | "medium" | "long">("all");
 
   const formatDuration = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -19,9 +21,40 @@ export default function MeetingHistory({ meetings, onSelectMeeting, onDeleteMeet
 
   const filteredMeetings = meetings.filter((meeting) => {
     const search = searchQuery.toLowerCase();
-    const matchesTitle = meeting.title.toLowerCase().includes(search);
-    const matchesPoints = meeting.points?.some((point) => point.toLowerCase().includes(search)) || false;
-    return matchesTitle || matchesPoints;
+    const matchesSearch = 
+      meeting.title.toLowerCase().includes(search) ||
+      (meeting.points?.some((point) => point.toLowerCase().includes(search)) || false) ||
+      (meeting.transcript?.toLowerCase().includes(search) || false);
+
+    let matchesDate = true;
+    if (dateFilter !== "all") {
+      const meetingDate = new Date(meeting.date);
+      const now = new Date();
+      const diffTime = Math.abs(now.getTime() - meetingDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (dateFilter === "today") {
+        matchesDate = diffDays <= 1;
+      } else if (dateFilter === "week") {
+        matchesDate = diffDays <= 7;
+      } else if (dateFilter === "older") {
+        matchesDate = diffDays > 7;
+      }
+    }
+
+    let matchesDuration = true;
+    if (durationFilter !== "all") {
+      const mins = meeting.duration / 60;
+      if (durationFilter === "short") {
+        matchesDuration = mins <= 1;
+      } else if (durationFilter === "medium") {
+        matchesDuration = mins > 1 && mins <= 5;
+      } else if (durationFilter === "long") {
+        matchesDuration = mins > 5;
+      }
+    }
+
+    return matchesSearch && matchesDate && matchesDuration;
   });
 
   return (
@@ -46,6 +79,45 @@ export default function MeetingHistory({ meetings, onSelectMeeting, onDeleteMeet
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-slate-900 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl pl-10 pr-4 py-2 text-sm text-white placeholder-slate-500 outline-none transition-all"
           />
+        </div>
+      </div>
+
+      {/* Advanced Filter Categories */}
+      <div className="bg-slate-900/40 border border-slate-800/80 p-4 rounded-2xl space-y-3.5">
+        {/* Date Category */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider w-16">Date:</span>
+          {(["all", "today", "week", "older"] as const).map((filter) => (
+            <button
+              key={filter}
+              onClick={() => setDateFilter(filter)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                dateFilter === filter
+                  ? "bg-indigo-600 border-indigo-500 text-white shadow-sm"
+                  : "bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white"
+              }`}
+            >
+              {filter === "all" ? "All Dates" : filter === "today" ? "Today" : filter === "week" ? "This Week" : "Older"}
+            </button>
+          ))}
+        </div>
+
+        {/* Duration Category */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider w-16">Duration:</span>
+          {(["all", "short", "medium", "long"] as const).map((filter) => (
+            <button
+              key={filter}
+              onClick={() => setDurationFilter(filter)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                durationFilter === filter
+                  ? "bg-indigo-600 border-indigo-500 text-white shadow-sm"
+                  : "bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white"
+              }`}
+            >
+              {filter === "all" ? "All" : filter === "short" ? "Quick (< 1m)" : filter === "medium" ? "Medium (1m - 5m)" : "Detailed (> 5m)"}
+            </button>
+          ))}
         </div>
       </div>
 

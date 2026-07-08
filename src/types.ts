@@ -1,3 +1,9 @@
+export interface ActionItem {
+  task: string;
+  owner: string;
+  deadline: string;
+}
+
 export interface RecordItem {
   id: string;
   title: string;
@@ -8,4 +14,7 @@ export interface RecordItem {
   keyPoints?: string[];
   transcript?: string;
   languageHint?: string;
+  actionItems?: ActionItem[];
+  localOnly?: boolean;
 }
+
