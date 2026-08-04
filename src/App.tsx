@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
-import { Mic, History, Sparkles, X, Trash2, CheckCircle2, Info, Sun, Moon, LayoutDashboard, LogOut, Video, ClipboardList, Network } from "lucide-react";
+import { Mic, History, Sparkles, X, Trash2, CheckCircle2, Info, Sun, Moon, LayoutDashboard, LogOut, Video, ClipboardList } from "lucide-react";
 import { RecordItem } from "./types";
 import MeetingRecorder from "./components/MeetingRecorder";
 import MeetingHistory from "./components/MeetingHistory";
 import MeetingDetail from "./components/MeetingDetail";
 import RecycleBin from "./components/RecycleBin";
 import LoginScreen from "./components/LoginScreen";
-import ArchitectureVisualizer, { VisualizerState } from "./components/ArchitectureVisualizer";
 
 // Default Seed Record to showcase the point-form format on first launch
 const SEED_RECORD: RecordItem = {
@@ -44,8 +43,7 @@ const SEED_RECORD: RecordItem = {
 export default function App() {
   const [meetings, setMeetings] = useState<RecordItem[]>([]);
   const [recycledMeetings, setRecycledMeetings] = useState<RecordItem[]>([]);
-  const [currentView, setCurrentView] = useState<"dashboard" | "record" | "history" | "recycle" | "architecture">("dashboard");
-  const [visualState, setVisualState] = useState<VisualizerState>("idle");
+  const [currentView, setCurrentView] = useState<"dashboard" | "record" | "history" | "recycle">("dashboard");
   const [selectedMeeting, setSelectedMeeting] = useState<RecordItem | null>(null);
 
   // Auth state
@@ -138,8 +136,6 @@ export default function App() {
     setUserEmail(email);
     localStorage.setItem("meeting_recorder_summarizer_user_email", email);
     showToast("Access Verified", `Welcome, ${email}!`, "success");
-    setVisualState("login");
-    setTimeout(() => setVisualState("idle"), 3500);
     setCurrentView("dashboard");
   };
 
@@ -387,21 +383,6 @@ export default function App() {
                   )}
                 </button>
 
-                <button
-                  id="nav-architecture-button"
-                  onClick={() => {
-                    setSelectedMeeting(null);
-                    setCurrentView("architecture");
-                  }}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all ${currentView === "architecture" && !selectedMeeting
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/15"
-                      : "text-slate-400 hover:text-white"
-                    }`}
-                >
-                  <Network className="w-3.5 h-3.5" />
-                  Architecture
-                </button>
-
                 <div className="h-4 w-[1px] bg-slate-800 mx-1 shrink-0"></div>
 
                 <button
@@ -614,7 +595,6 @@ export default function App() {
                     setIsRecordingActive(active);
                     setRecordingDuration(duration);
                   }}
-                  onVisualStateChange={setVisualState}
                 />
               </div>
             ) : currentView === "history" ? (
@@ -623,15 +603,13 @@ export default function App() {
                 onSelectMeeting={(m) => setSelectedMeeting(m)}
                 onDeleteMeeting={handleDeleteMeeting}
               />
-            ) : currentView === "recycle" ? (
+            ) : (
               <RecycleBin
                 recycledMeetings={recycledMeetings}
                 onRestoreMeeting={handleRestoreMeeting}
                 onDeletePermanently={handleDeletePermanently}
                 onEmptyBin={handleEmptyBin}
               />
-            ) : (
-              <ArchitectureVisualizer activeState={visualState} />
             )}
           </div>
         )}

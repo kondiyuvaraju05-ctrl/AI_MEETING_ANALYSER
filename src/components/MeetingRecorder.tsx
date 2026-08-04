@@ -1,34 +1,24 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, ScreenShare, Sparkles, Check, Globe, UploadCloud, Trash2, Volume2, AlertCircle, Play, Pause, Radio, Users, MessageSquare, Info, Star, CheckCircle2, Network } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, ScreenShare, Sparkles, Check, Globe, UploadCloud, Trash2, Volume2, AlertCircle, Play, Pause, Radio, Users, MessageSquare, Info, Star, CheckCircle2 } from "lucide-react";
 import AudioVisualizer from "./AudioVisualizer";
 import { RecordItem } from "../types";
-import ArchitectureVisualizer, { VisualizerState } from "./ArchitectureVisualizer";
 
 interface MeetingRecorderProps {
   onMeetingProcessed: (record: RecordItem) => void;
   onViewStateChange?: (viewState: "lobby" | "meeting" | "processing") => void;
   localOnlyMode: boolean;
   onRecordingStatusChange?: (isRecording: boolean, duration: number) => void;
-  onVisualStateChange?: (state: VisualizerState) => void;
 }
 
 export default function MeetingRecorder({
   onMeetingProcessed,
   onViewStateChange,
   localOnlyMode,
-  onRecordingStatusChange,
-  onVisualStateChange
+  onRecordingStatusChange
 }: MeetingRecorderProps) {
   // Navigation states
   const [viewState, setViewState] = useState<"lobby" | "meeting" | "processing">("lobby");
   const [activeTab, setActiveTab] = useState<"record" | "upload">("record");
-  const [showVisualizerOverlay, setShowVisualizerOverlay] = useState(false);
-  const [visualState, setLocalVisualState] = useState<VisualizerState>("idle");
-
-  const setVisualState = (state: VisualizerState) => {
-    setLocalVisualState(state);
-    onVisualStateChange?.(state);
-  };
   
   // Lobby settings
   const [meetingTitle, setMeetingTitle] = useState("");
@@ -420,11 +410,6 @@ export default function MeetingRecorder({
     setError(null);
     setViewState("meeting");
     
-    // Trigger visualizer path animations for Auth/Gateway -> Signaling -> Media
-    setVisualState("join");
-    setTimeout(() => setVisualState("signaling"), 1200);
-    setTimeout(() => setVisualState("media_sfu"), 2800);
-    
     // Create the session stream
     try {
       // If we already have a stream from lobby, reuse or refresh it
@@ -705,7 +690,6 @@ export default function MeetingRecorder({
     setViewState("processing");
     setProcessingStep(1);
     setStatusMessage("Converting recording stream...");
-    setVisualState("gemini_process");
 
     try {
       if (localOnlyMode) {
@@ -744,7 +728,6 @@ export default function MeetingRecorder({
         };
 
         onMeetingProcessed(newRecord);
-        setVisualState("idle");
 
         // Reset layout states
         setMeetingTitle("");
@@ -807,7 +790,6 @@ export default function MeetingRecorder({
       };
 
       onMeetingProcessed(newRecord);
-      setVisualState("idle");
       
       // Reset layout states
       setMeetingTitle("");
@@ -822,7 +804,6 @@ export default function MeetingRecorder({
       setError(err.message || "Failed to process audio. Please ensure GEMINI_API_KEY is configured.");
       setViewState("lobby");
       setProcessingStep(0);
-      setVisualState("idle");
     }
   };
 
@@ -1230,12 +1211,6 @@ export default function MeetingRecorder({
 
           </div>
         </div>
-
-        {showVisualizerOverlay && (
-          <div className="w-full lg:w-[460px] shrink-0 flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-y-auto p-1.5 scrollbar-thin">
-            <ArchitectureVisualizer activeState={visualState} />
-          </div>
-        )}
       </div>
 
         {/* Right Sidebar: Dedicated Recording and Transcription controls */}
@@ -1429,21 +1404,8 @@ export default function MeetingRecorder({
           </button>
         </div>
 
-        {/* Right section: Sidebar and Visualizer toggles */}
+        {/* Right section: Sidebar toggles */}
         <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => setShowVisualizerOverlay(!showVisualizerOverlay)}
-            className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 ${
-              showVisualizerOverlay
-                ? "bg-indigo-600/15 border-indigo-500/25 text-indigo-400"
-                : "bg-slate-850 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800"
-            }`}
-            title="Toggle Live WebRTC SFU Architecture Flow"
-          >
-            <Network className={`w-4 h-4 ${showVisualizerOverlay ? "text-indigo-400 animate-pulse" : "text-slate-400"}`} />
-            <span>Architecture Flow</span>
-          </button>
-
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 ${
