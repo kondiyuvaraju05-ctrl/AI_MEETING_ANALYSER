@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Mic, History, Sparkles, X, Trash2, CheckCircle2, Info, Sun, Moon, LayoutDashboard, LogOut, Video, ClipboardList } from "lucide-react";
+import { Mic, History, Sparkles, X, Trash2, CheckCircle2, Info, Sun, Moon, LayoutDashboard, LogOut, Radio, ClipboardList } from "lucide-react";
 import { RecordItem } from "./types";
 import MeetingRecorder from "./components/MeetingRecorder";
 import MeetingHistory from "./components/MeetingHistory";
@@ -331,7 +331,7 @@ export default function App() {
                       : "text-slate-400 hover:text-white"
                     }`}
                 >
-                  <Video className="w-3.5 h-3.5" />
+                  <Mic className="w-3.5 h-3.5" />
                   {isRecordingActive && (
                     <span className="flex h-1.5 w-1.5 relative shrink-0">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -524,16 +524,16 @@ export default function App() {
                 {/* Quick actions cards grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
 
-                  {/* Action 1: Create simulated call */}
-                  <div className="bg-slate-900 border border-slate-800 hover:border-indigo-500/35 p-6 rounded-3xl shadow-xl flex flex-col justify-between transition-all group hover:scale-[1.01]">
+                  {/* Action 1: Create audio recording */}
+                  <div className="bg-slate-900 border border-slate-800 hover:border-amber-500/35 p-6 rounded-3xl shadow-xl flex flex-col justify-between transition-all group hover:scale-[1.01]">
                     <div className="space-y-4">
-                      <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform">
-                        <Video className="w-6 h-6 animate-pulse" />
+                      <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform">
+                        <Radio className="w-6 h-6 animate-pulse" />
                       </div>
                       <div className="space-y-1.5">
-                        <h3 className="text-sm md:text-base font-bold text-white group-hover:text-indigo-400 transition-colors">Simulated Meeting Room</h3>
+                        <h3 className="text-sm md:text-base font-bold text-white group-hover:text-amber-400 transition-colors">Live Audio Recorder</h3>
                         <p className="text-xs text-slate-400 leading-relaxed">
-                          Launch a Google Meet style environment. Enable camera and mic streams, start live recording, and let Gemini compile transcripts and summary timelines automatically upon call completion.
+                          Start live audio recording with your microphone or upload an audio file. Gemini AI will automatically transcribe speech and compile point-form summaries and action items.
                         </p>
                       </div>
                     </div>
@@ -543,10 +543,10 @@ export default function App() {
                         setRecorderViewState("lobby");
                         setCurrentView("record");
                       }}
-                      className="mt-6 w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
+                      className="mt-6 w-full py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
                     >
-                      <Video className="w-3.5 h-3.5" />
-                      Launch Meeting Room
+                      <Mic className="w-3.5 h-3.5" />
+                      Launch Audio Recorder
                     </button>
                   </div>
 
