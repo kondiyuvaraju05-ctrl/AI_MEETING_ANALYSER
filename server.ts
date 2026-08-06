@@ -157,7 +157,7 @@ Return a JSON object matching the requested schema.`;
 
     // Call Gemini API with the audio part and text prompt
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: [
         {
           inlineData: {
