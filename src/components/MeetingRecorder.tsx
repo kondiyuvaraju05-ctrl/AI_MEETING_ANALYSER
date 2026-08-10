@@ -587,17 +587,18 @@ export default function MeetingRecorder({
     setIsProcessing(false);
   };
 
-  // Helper for audio upload
+  // Helper for audio/video upload duration (supports MP4, audio, video)
   const getAudioDuration = (file: File): Promise<number> => {
     return new Promise((resolve) => {
-      const audio = new Audio();
+      const isVideo = file.type.startsWith("video/") || /\.(mp4|m4v|mkv|mov|avi|flv|webm)$/i.test(file.name);
+      const mediaElement = isVideo ? document.createElement("video") : document.createElement("audio");
       const objectUrl = URL.createObjectURL(file);
-      audio.src = objectUrl;
-      audio.addEventListener("loadedmetadata", () => {
-        resolve(Math.round(audio.duration));
+      mediaElement.src = objectUrl;
+      mediaElement.addEventListener("loadedmetadata", () => {
+        resolve(Math.round(mediaElement.duration) || 0);
         URL.revokeObjectURL(objectUrl);
       });
-      audio.addEventListener("error", () => {
+      mediaElement.addEventListener("error", () => {
         resolve(0);
         URL.revokeObjectURL(objectUrl);
       });
@@ -606,13 +607,13 @@ export default function MeetingRecorder({
 
   const handleFileChange = async (file: File) => {
     setError(null);
-    if (!file.type.startsWith("audio/")) {
-      const name = file.name.toLowerCase();
-      const isAudio = name.endsWith(".mp3") || name.endsWith(".wav") || name.endsWith(".m4a") || name.endsWith(".ogg") || name.endsWith(".webm") || name.endsWith(".aac");
-      if (!isAudio) {
-        setError("Invalid file type. Please upload an audio file.");
-        return;
-      }
+    const name = file.name.toLowerCase();
+    const isAudio = file.type.startsWith("audio/") || name.endsWith(".mp3") || name.endsWith(".wav") || name.endsWith(".m4a") || name.endsWith(".ogg") || name.endsWith(".webm") || name.endsWith(".aac") || name.endsWith(".flac") || name.endsWith(".opus") || name.endsWith(".amr") || name.endsWith(".wma");
+    const isVideo = file.type.startsWith("video/") || name.endsWith(".mp4") || name.endsWith(".m4v") || name.endsWith(".mkv") || name.endsWith(".mov") || name.endsWith(".avi");
+
+    if (!isAudio && !isVideo) {
+      setError("Invalid file type. Please upload an audio or video file (MP3, WAV, M4A, MP4, WEBM, AAC, etc.).");
+      return;
     }
     setUploadedFile(file);
     if (!meetingTitle) {
@@ -886,7 +887,7 @@ export default function MeetingRecorder({
             <input
               id="audio-file-uploader"
               type="file"
-              accept="audio/*"
+              accept="audio/*,video/*,.mp4,.m4v,.mov,.avi,.mkv,.mp3,.wav,.m4a,.ogg,.webm,.aac,.flac,.opus,.amr,.wma"
               onChange={(e) => {
                 if (e.target.files && e.target.files[0]) {
                   handleFileChange(e.target.files[0]);
@@ -904,8 +905,8 @@ export default function MeetingRecorder({
             ) : (
               <div className="space-y-2">
                 <UploadCloud className="w-10 h-10 text-amber-400/70 mx-auto" />
-                <p className="text-sm text-white font-semibold">Drag audio file here or click to browse</p>
-                <p className="text-xs text-slate-500 font-mono">Supported formats: MP3, WAV, M4A, OGG, WEBM, AAC</p>
+                <p className="text-sm text-white font-semibold">Drag MP4 or audio file here or click to browse</p>
+                <p className="text-xs text-slate-500 font-mono">Supported formats: MP4, MP3, WAV, M4A, OGG, WEBM, AAC, MOV</p>
               </div>
             )}
           </div>
@@ -913,11 +914,14 @@ export default function MeetingRecorder({
           {uploadedFile && (
             <button
               type="button"
-              onClick={() => processAudio(uploadedFile, uploadedFile.type, fileDuration)}
+              onClick={() => {
+                const mime = uploadedFile.type || (uploadedFile.name.toLowerCase().endsWith(".mp4") ? "video/mp4" : "audio/mpeg");
+                processAudio(uploadedFile, mime, fileDuration);
+              }}
               className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white rounded-2xl font-bold text-xs tracking-wide transition-all shadow-lg shadow-amber-600/20 flex items-center justify-center gap-2 cursor-pointer"
             >
               <Sparkles className="w-4 h-4 animate-pulse" />
-              Analyze and Recap Audio
+              Analyze and Recap File
             </button>
           )}
         </div>

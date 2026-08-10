@@ -8,12 +8,13 @@ import { initSignalingServer } from "./server/services/signalingServer";
 import { authService } from "./server/services/authService";
 import { meetingService } from "./server/services/meetingService";
 import { notificationService } from "./server/services/notificationService";
+import { ensureCompatibleAudioFormat } from "./server/services/audioConverter";
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 1505;
 const server = http.createServer(app);
 
 // Enable large body sizes for audio upload (base64)
@@ -133,6 +134,12 @@ app.post("/api/upload", async (req, res) => {
       return res.status(400).json({ error: "Missing 'audio' data in request body. It should be a base64-encoded string." });
     }
 
+    // Intercept & convert audio if format is unsupported by Gemini (e.g., OPUS/M4A/AMR/etc.)
+    const convertedAudioPayload = await ensureCompatibleAudioFormat({
+      audio,
+      mimeType: mimeType || "audio/webm",
+    });
+
     const ai = getGeminiClient();
 
     // Construct the prompt with instructions
@@ -157,12 +164,12 @@ Return a JSON object matching the requested schema.`;
 
     // Call Gemini API with the audio part and text prompt
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.0-flash",
       contents: [
         {
           inlineData: {
-            mimeType: mimeType || "audio/webm",
-            data: audio,
+            mimeType: convertedAudioPayload.mimeType,
+            data: convertedAudioPayload.audio,
           },
         },
         {
