@@ -1,24 +1,32 @@
 import { useState } from "react";
-import { ArrowLeft, Clock, Calendar, Globe, Copy, Check, Sparkles, ClipboardCheck, FileDown, Download, FileText, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Clock, Calendar, Globe, Copy, Check, Sparkles, FileDown, Download, FileText, CheckCircle2, Mail, RefreshCw, Tag } from "lucide-react";
 import { RecordItem } from "../types";
 import { jsPDF } from "jspdf";
 
 interface MeetingDetailProps {
   meeting: RecordItem;
   onBack: () => void;
+  onUpdateMeeting?: (updated: RecordItem) => void;
 }
 
-export default function MeetingDetail({ meeting, onBack }: MeetingDetailProps) {
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const [copiedAll, setCopiedAll] = useState(false);
-  const [copiedSummary, setCopiedSummary] = useState(false);
-  const [copiedKeyPoints, setCopiedKeyPoints] = useState(false);
-  const [copiedActionItems, setCopiedActionItems] = useState(false);
-  const [copiedTranscript, setCopiedTranscript] = useState(false);
-  const [exporting, setExporting] = useState(false);
+export default function MeetingDetail({ meeting, onBack, onUpdateMeeting }: MeetingDetailProps) {
+  const [currentMeeting, setCurrentMeeting] = useState<RecordItem>(meeting);
+  const [activeTab, setActiveTab] = useState<"summary" | "keypoints" | "actionitems" | "email" | "transcript">("summary");
   
-  // Four-Tab navigation
-  const [activeTab, setActiveTab] = useState<"summary" | "keypoints" | "actionitems" | "overall">("summary");
+  // Translation state
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("English");
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [translationProvider, setTranslationProvider] = useState<string | null>(null);
+
+  // Copy states
+  const [copiedEmail, setCopiedEmail] = useState(false);
+  const [copiedSummary, setCopiedSummary] = useState(false);
+  const [copiedAll, setCopiedAll] = useState(false);
+
+  const languages = [
+    "English", "Spanish", "French", "German", "Mandarin",
+    "Japanese", "Hindi", "Portuguese", "Italian", "Russian", "Arabic"
+  ];
 
   const formatDuration = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -26,715 +34,396 @@ export default function MeetingDetail({ meeting, onBack }: MeetingDetailProps) {
     return `${mins}m ${remainingSecs}s`;
   };
 
-  const copyToClipboard = (text: string, index: number) => {
+  // Toggle Action Item Checkbox
+  const toggleActionItem = (index: number) => {
+    if (!currentMeeting.actionItems) return;
+    const updatedItems = [...currentMeeting.actionItems];
+    updatedItems[index] = {
+      ...updatedItems[index],
+      completed: !updatedItems[index].completed,
+    };
+    const updated = { ...currentMeeting, actionItems: updatedItems };
+    setCurrentMeeting(updated);
+    onUpdateMeeting?.(updated);
+  };
+
+  // Execute 11-Language Translation API with Fallback
+  const handleTranslate = async (targetLang: string) => {
+    if (targetLang === selectedLanguage) return;
+    setSelectedLanguage(targetLang);
+
+    if (targetLang === "English" && meeting.languageHint === "English") {
+      setCurrentMeeting(meeting);
+      setTranslationProvider(null);
+      return;
+    }
+
+    setIsTranslating(true);
+    setTranslationProvider(null);
+
+    try {
+      const response = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetLanguage: targetLang,
+          summary: currentMeeting.summary,
+          transcript: currentMeeting.transcript,
+          keyPoints: currentMeeting.keyPoints,
+          actionItems: currentMeeting.actionItems,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.translated) {
+        throw new Error(data.error || "Translation failed.");
+      }
+
+      setCurrentMeeting((prev) => ({
+        ...prev,
+        summary: data.translated.summary || prev.summary,
+        transcript: data.translated.transcript || prev.transcript,
+        keyPoints: data.translated.keyPoints || prev.keyPoints,
+        actionItems: data.translated.actionItems || prev.actionItems,
+      }));
+      setTranslationProvider(data.provider || "Translation Service");
+    } catch (err: any) {
+      console.error("Translation error:", err);
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
+  const copyEmail = () => {
+    const text = currentMeeting.emailDraft || `Subject: Recap for ${currentMeeting.title}\n\nSummary:\n${currentMeeting.summary}`;
     navigator.clipboard.writeText(text);
-    setCopiedIndex(index);
-    setTimeout(() => setCopiedIndex(null), 2000);
+    setCopiedEmail(true);
+    setTimeout(() => setCopiedEmail(false), 2000);
   };
 
   const copySummary = () => {
-    if (!meeting.summary) return;
-    navigator.clipboard.writeText(meeting.summary);
+    if (!currentMeeting.summary) return;
+    navigator.clipboard.writeText(currentMeeting.summary);
     setCopiedSummary(true);
     setTimeout(() => setCopiedSummary(false), 2000);
   };
 
-  const copyKeyPoints = () => {
-    if (!meeting.keyPoints) return;
-    const text = meeting.keyPoints.map((p) => `• ${p}`).join("\n");
-    navigator.clipboard.writeText(text);
-    setCopiedKeyPoints(true);
-    setTimeout(() => setCopiedKeyPoints(false), 2000);
-  };
+  const exportToTxt = () => {
+    let text = `${currentMeeting.title.toUpperCase()}\n`;
+    text += `Date: ${currentMeeting.date}\nDuration: ${formatDuration(currentMeeting.duration)}\nCategory: ${currentMeeting.category || "General"}\n\n`;
+    text += `SUMMARY:\n${currentMeeting.summary || ""}\n\n`;
+    text += `KEY POINTS:\n` + (currentMeeting.keyPoints || []).map((p) => `• ${p}`).join("\n") + `\n\n`;
+    text += `ACTION ITEMS:\n` + (currentMeeting.actionItems || []).map((a) => `• [${a.completed ? "X" : " "}] ${a.task} (${a.owner} - ${a.deadline})`).join("\n") + `\n\n`;
+    text += `TRANSCRIPT:\n${currentMeeting.transcript || ""}\n`;
 
-  const copyTranscript = () => {
-    if (!meeting.transcript) return;
-    navigator.clipboard.writeText(meeting.transcript);
-    setCopiedTranscript(true);
-    setTimeout(() => setCopiedTranscript(false), 2000);
-  };
-
-  const copyActionItems = () => {
-    if (!meeting.actionItems) return;
-    const text = meeting.actionItems.map((item) => `• ${item.task} (Owner: ${item.owner}, Deadline: ${item.deadline})`).join("\n");
-    navigator.clipboard.writeText(text);
-    setCopiedActionItems(true);
-    setTimeout(() => setCopiedActionItems(false), 2000);
-  };
-
-  const copyAll = () => {
-    let allText = `${meeting.title}\nDate: ${meeting.date}\nDuration: ${formatDuration(meeting.duration)}\n\n`;
-    if (meeting.summary) {
-      allText += `RECORDING SUMMARY\n${meeting.summary}\n\n`;
-    }
-    if (meeting.keyPoints && meeting.keyPoints.length > 0) {
-      allText += `KEY POINTS\n` + meeting.keyPoints.map((p) => `• ${p}`).join("\n") + `\n\n`;
-    }
-    if (meeting.actionItems && meeting.actionItems.length > 0) {
-      allText += `ACTION ITEMS\n` + meeting.actionItems.map((item) => `• [ ] ${item.task} (Owner: ${item.owner}, Deadline: ${item.deadline})`).join("\n") + `\n\n`;
-    }
-    allText += `OVERALL MATTER (TIMELINE)\n` + meeting.points.map((p) => `• ${p}`).join("\n");
-    if (meeting.transcript) {
-      allText += `\n\nOVERALL MATTER (FULL TRANSCRIPT)\n${meeting.transcript}`;
-    }
-    
-    navigator.clipboard.writeText(allText);
-    setCopiedAll(true);
-    setTimeout(() => setCopiedAll(false), 2500);
-  };
-
-  const exportToMarkdown = () => {
-    let md = `# ${meeting.title}\n\n`;
-    md += `**Date:** ${meeting.date}  \n`;
-    md += `**Duration:** ${formatDuration(meeting.duration)}  \n`;
-    md += `**Language:** ${meeting.languageHint || "Auto-detect"}  \n\n`;
-
-    if (meeting.summary) {
-      md += `## Recording Summary\n\n`;
-      md += `> ${meeting.summary}\n\n`;
-    }
-
-    if (meeting.keyPoints && meeting.keyPoints.length > 0) {
-      md += `## Key Takeaways\n\n`;
-      meeting.keyPoints.forEach((point) => {
-        md += `- ${point}\n`;
-      });
-      md += `\n`;
-    }
-
-    if (meeting.actionItems && meeting.actionItems.length > 0) {
-      md += `## Action Items\n\n`;
-      md += `| Task | Owner | Deadline |\n`;
-      md += `| :--- | :--- | :--- |\n`;
-      meeting.actionItems.forEach((item) => {
-        md += `| ${item.task} | **${item.owner}** | \`${item.deadline}\` |\n`;
-      });
-      md += `\n`;
-    }
-
-    if (meeting.points && meeting.points.length > 0) {
-      md += `## Discussion Timeline\n\n`;
-      meeting.points.forEach((point, index) => {
-        md += `${index + 1}. ${point}\n`;
-      });
-      md += `\n`;
-    }
-
-    if (meeting.transcript) {
-      md += `## Full Dialogue Transcript\n\n`;
-      md += `\`\`\`text\n${meeting.transcript}\n\`\`\`\n`;
-    }
-
-    const blob = new Blob([md], { type: "text/markdown;charset=utf-8;" });
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", `${meeting.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-recap.md`);
-    document.body.appendChild(link);
+    link.download = `${currentMeeting.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-recap.txt`;
     link.click();
-    document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
   const exportToPdf = () => {
-    setExporting(true);
     try {
-      const doc = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4",
-      });
+      const doc = new jsPDF();
+      let y = 20;
 
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const margin = 20;
-      const contentWidth = pageWidth - (margin * 2);
-
-      // Document Title Header
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(24);
-      doc.setTextColor(15, 23, 42); // slate-900 (deep dark blue)
-      
-      const titleLines = doc.splitTextToSize(meeting.title, contentWidth);
-      let y = 25;
-      doc.text(titleLines, margin, y);
-      y += titleLines.length * 8 + 4;
-
-      // Metadata info row
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      doc.setTextColor(100, 116, 139); // slate-500
-      
-      const metaText = `Session Date: ${meeting.date}   |   Duration: ${formatDuration(meeting.duration)}   |   Language: ${meeting.languageHint || "Auto-detect"}`;
-      doc.text(metaText, margin, y);
+      doc.setFontSize(16);
+      doc.text(currentMeeting.title, 14, y);
       y += 8;
 
-      // Horizontal Divider
-      doc.setDrawColor(226, 232, 240); // slate-200
-      doc.setLineWidth(0.5);
-      doc.line(margin, y, pageWidth - margin, y);
+      doc.setFontSize(10);
+      doc.text(`Date: ${currentMeeting.date} | Duration: ${formatDuration(currentMeeting.duration)}`, 14, y);
       y += 12;
 
-      // Render Recording Summary Section if available
-      if (meeting.summary) {
-        doc.setFont("helvetica", "bold");
+      if (currentMeeting.summary) {
         doc.setFontSize(12);
-        doc.setTextColor(79, 70, 229); // Indigo-600
-        doc.text("RECORDING SUMMARY", margin, y);
+        doc.text("Executive Summary", 14, y);
         y += 6;
-
-        doc.setFont("helvetica", "normal");
         doc.setFontSize(10);
-        doc.setTextColor(51, 65, 85); // slate-700
-        
-        const summaryTextLines = doc.splitTextToSize(meeting.summary, contentWidth - 10);
-        const textHeight = summaryTextLines.length * 5.5;
-        const cardPadding = 10;
-        const cardHeight = textHeight + cardPadding;
-
-        if (y + cardHeight > 265) {
-          doc.addPage();
-          y = 25;
-        }
-
-        doc.setFillColor(248, 250, 252);
-        doc.rect(margin, y, contentWidth, cardHeight, "F");
-
-        doc.setFillColor(99, 102, 241);
-        doc.rect(margin, y, 1.5, cardHeight, "F");
-
-        doc.text(summaryTextLines, margin + 5, y + 7.5);
-        y += cardHeight + 12;
+        const splitSummary = doc.splitTextToSize(currentMeeting.summary, 180);
+        doc.text(splitSummary, 14, y);
+        y += splitSummary.length * 5 + 8;
       }
 
-      // Render Key Points Section if available
-      if (meeting.keyPoints && meeting.keyPoints.length > 0) {
-        doc.setFont("helvetica", "bold");
+      if (currentMeeting.actionItems && currentMeeting.actionItems.length > 0) {
         doc.setFontSize(12);
-        doc.setTextColor(79, 70, 229); // Indigo-600
-        doc.text("KEY POINTS", margin, y);
-        y += 8;
-
-        doc.setFont("helvetica", "normal");
+        doc.text("Action Items", 14, y);
+        y += 6;
         doc.setFontSize(10);
-        doc.setTextColor(51, 65, 85);
-
-        meeting.keyPoints.forEach((point) => {
-          const wrappedLines = doc.splitTextToSize(point, contentWidth - 6);
-          const lineBlockHeight = wrappedLines.length * 5.5;
-
-          if (y + lineBlockHeight > 265) {
-            doc.addPage();
-            y = 25;
-          }
-
-          doc.setFont("helvetica", "bold");
-          doc.setTextColor(99, 102, 241);
-          doc.text("•", margin, y + 1);
-
-          doc.setFont("helvetica", "normal");
-          doc.setTextColor(51, 65, 85);
-          doc.text(wrappedLines, margin + 5, y);
-          y += lineBlockHeight + 3;
-        });
-        y += 8;
-      }
-
-      // Render Audio Points Timeline Section (Overall Matter)
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.setTextColor(79, 70, 229); // Indigo-600
-      doc.text("OVERALL MATTER (TIMELINE)", margin, y);
-      y += 8;
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(51, 65, 85);
-
-      if (meeting.points && meeting.points.length > 0) {
-        meeting.points.forEach((point, index) => {
-          const wrappedLines = doc.splitTextToSize(point, contentWidth - 8);
-          const lineBlockHeight = wrappedLines.length * 5.5;
-
-          if (y + lineBlockHeight > 265) {
-            doc.addPage();
-            y = 25;
-          }
-
-          doc.setFont("helvetica", "bold");
-          doc.setTextColor(99, 102, 241);
-          doc.text(`${index + 1}.`, margin, y);
-
-          doc.setFont("helvetica", "normal");
-          doc.setTextColor(51, 65, 85);
-          doc.text(wrappedLines, margin + 8, y);
-          
-          y += lineBlockHeight + 3;
-        });
-      } else {
-        doc.text("No timeline points extracted.", margin, y);
-      }
-
-      // Render Full Transcript Section if available
-      if (meeting.transcript) {
-        y += 8;
-        
-        if (y + 15 > 265) {
-          doc.addPage();
-          y = 25;
-        }
-
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.setTextColor(79, 70, 229); // Indigo-600
-        doc.text("OVERALL MATTER (FULL TRANSCRIPT)", margin, y);
-        y += 8;
-
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
-        doc.setTextColor(51, 65, 85);
-
-        const paragraphs = meeting.transcript.split("\n");
-        paragraphs.forEach((paragraph) => {
-          const trimmed = paragraph.trim();
-          if (!trimmed) return;
-
-          const wrappedLines = doc.splitTextToSize(trimmed, contentWidth);
-          const blockHeight = wrappedLines.length * 5.5;
-
-          if (y + blockHeight > 265) {
-            doc.addPage();
-            y = 25;
-          }
-
-          doc.text(wrappedLines, margin, y);
-          y += blockHeight + 4;
+        currentMeeting.actionItems.forEach((item) => {
+          doc.text(`• [${item.completed ? "X" : " "}] ${item.task} - Owner: ${item.owner} (${item.deadline})`, 14, y);
+          y += 6;
         });
       }
 
-      // Add Running Footer
-      const totalPages = doc.getNumberOfPages();
-      for (let i = 1; i <= totalPages; i++) {
-        doc.setPage(i);
-        
-        doc.setDrawColor(241, 245, 249);
-        doc.setLineWidth(0.3);
-        doc.line(margin, 280, pageWidth - margin, 280);
-
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(8);
-        doc.setTextColor(148, 163, 184); // slate-400
-        
-        doc.text("Meeting Summary & Insights Report", margin, 285);
-        
-        const pageText = `Page ${i} of ${totalPages}`;
-        const pageTextWidth = doc.getTextWidth(pageText);
-        doc.text(pageText, (pageWidth - pageTextWidth) / 2, 285);
-        
-        const dateString = new Date().toLocaleDateString();
-        const stampText = `Exported: ${dateString}`;
-        const stampTextWidth = doc.getTextWidth(stampText);
-        doc.text(stampText, pageWidth - margin - stampTextWidth, 285);
-      }
-
-      const fileName = `${meeting.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-recap.pdf`;
-      doc.save(fileName);
+      doc.save(`${currentMeeting.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-dossier.pdf`);
     } catch (err) {
-      console.error("Failed to generate PDF document:", err);
-    } finally {
-      setExporting(false);
+      console.error("PDF export failed:", err);
     }
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto space-y-6">
-      {/* Back action bar */}
+    <div className="space-y-6 max-w-4xl mx-auto animate-fade-in">
+      {/* Top Controls Header */}
       <div className="flex items-center justify-between">
         <button
-          id="back-to-list-button"
           onClick={onBack}
-          className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm font-medium w-fit"
+          className="inline-flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl transition-all"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Sessions
+          <span>Back to Sessions</span>
         </button>
 
-        <div className="flex items-center gap-2 text-xs font-mono font-semibold bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 px-3 py-1 rounded-full w-fit">
-          <Sparkles className="w-3.5 h-3.5" />
-          Recap Ready
-        </div>
-      </div>
-
-      {/* Header Info Panel */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden shadow-xl">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none"></div>
-
-        <div className="space-y-4 relative">
-          <div>
-            <h1 id="meeting-detail-title" className="text-2xl md:text-3xl font-bold text-white tracking-tight">
-              {meeting.title}
-            </h1>
-            <p className="text-slate-400 text-xs mt-1.5 flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-slate-500" />
-              {meeting.date}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 text-sm">
-            <div className="flex items-center gap-2 bg-slate-950/60 border border-slate-800/80 px-3.5 py-1.5 rounded-full text-slate-300">
-              <Clock className="w-4 h-4 text-indigo-400" />
-              <span>Duration: {formatDuration(meeting.duration)}</span>
-            </div>
-
-            <div className="flex items-center gap-2 bg-slate-950/60 border border-slate-800/80 px-3.5 py-1.5 rounded-full text-slate-300">
-              <Globe className="w-4 h-4 text-sky-400" />
-              <span>Language: {meeting.languageHint || "Auto-detect"}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Action buttons panel */}
-      <div className="bg-gradient-to-r from-indigo-950/30 to-sky-950/20 border border-indigo-500/15 rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="space-y-0.5 text-center sm:text-left">
-          <h3 className="text-sm font-bold text-indigo-300 flex items-center justify-center sm:justify-start gap-1.5">
-            <Sparkles className="w-4 h-4 text-indigo-400" />
-            Recap Delivery Actions
-          </h3>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Copy the full meeting dossier to clipboard or download a stylized PDF recap document.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3 w-full sm:w-auto shrink-0">
+        <div className="flex items-center gap-2">
           <button
-            id="copy-all-points-button"
-            onClick={copyAll}
-            className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold tracking-wide border transition-all ${
-              copiedAll
-                ? "bg-emerald-600/20 border-emerald-500/30 text-emerald-300"
-                : "bg-slate-900 border-slate-800 hover:border-slate-700 hover:bg-slate-800 text-slate-300"
+            onClick={exportToTxt}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-300 hover:text-white bg-slate-900 border border-slate-800 px-3 py-2 rounded-xl transition-all"
+          >
+            <FileText className="w-3.5 h-3.5 text-indigo-400" />
+            <span>TXT</span>
+          </button>
+          <button
+            onClick={exportToPdf}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 px-3.5 py-2 rounded-xl shadow-lg shadow-indigo-600/20 transition-all"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Export PDF</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Main Dossier Card */}
+      <div className="bg-slate-900 border border-slate-800 p-6 md:p-8 rounded-3xl shadow-2xl space-y-6">
+        {/* Title & Metadata */}
+        <div className="space-y-3 border-b border-slate-800 pb-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-2.5 py-0.5 rounded-full font-mono uppercase tracking-wider">
+              {currentMeeting.category || "General"}
+            </span>
+            <span className="text-[10px] bg-slate-950 text-slate-400 border border-slate-800 px-2.5 py-0.5 rounded-full font-mono">
+              {currentMeeting.inputMode === "manual" ? "Manual Notes Entry" : "Audio Capture"}
+            </span>
+          </div>
+
+          <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
+            {currentMeeting.title}
+          </h1>
+
+          <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 font-mono">
+            <div className="flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+              <span>{currentMeeting.date}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-sky-400" />
+              <span>{formatDuration(currentMeeting.duration)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 11-Language Translation Selector */}
+        <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs text-slate-300">
+            <Globe className="w-4 h-4 text-indigo-400" />
+            <span className="font-bold">11-Language Engine:</span>
+            {isTranslating && <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />}
+            {translationProvider && (
+              <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                Via {translationProvider}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedLanguage}
+              onChange={(e) => handleTranslate(e.target.value)}
+              disabled={isTranslating}
+              className="bg-slate-900 border border-slate-800 text-xs font-bold text-white px-3 py-1.5 rounded-xl outline-none focus:border-indigo-500 cursor-pointer"
+            >
+              {languages.map((lang) => (
+                <option key={lang} value={lang}>{lang}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Five Tab Navigation */}
+        <div className="flex bg-slate-950 p-1.5 rounded-2xl border border-slate-800 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab("summary")}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all shrink-0 ${
+              activeTab === "summary" ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-white"
             }`}
           >
-            {copiedAll ? (
-              <>
-                <Check className="w-4 h-4 text-emerald-400" />
-                Copied dossier!
-              </>
-            ) : (
-              <>
-                <Copy className="w-4 h-4 text-indigo-400" />
-                Copy Full recap
-              </>
-            )}
+            Summary
           </button>
-
           <button
-            id="export-md-button"
-            onClick={exportToMarkdown}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 hover:bg-slate-800 active:scale-[0.98] text-slate-300 hover:text-white rounded-xl text-xs font-bold tracking-wide transition-all shadow-md"
+            onClick={() => setActiveTab("keypoints")}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all shrink-0 ${
+              activeTab === "keypoints" ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-white"
+            }`}
           >
-            <Download className="w-4 h-4 text-indigo-400" />
-            Export Markdown
+            Key Takeaways
           </button>
-
           <button
-            id="export-pdf-button"
-            onClick={exportToPdf}
-            disabled={exporting}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 active:scale-[0.98] text-white rounded-xl text-xs font-bold tracking-wide transition-all shadow-md border border-indigo-500/35"
+            onClick={() => setActiveTab("actionitems")}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all shrink-0 ${
+              activeTab === "actionitems" ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-white"
+            }`}
           >
-            <FileDown className="w-4 h-4" />
-            {exporting ? "Generating PDF..." : "Export to PDF"}
+            Action Items ({currentMeeting.actionItems?.length || 0})
+          </button>
+          <button
+            onClick={() => setActiveTab("email")}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center justify-center gap-1 ${
+              activeTab === "email" ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Mail className="w-3.5 h-3.5" />
+            <span>Follow-up Email</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("transcript")}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all shrink-0 ${
+              activeTab === "transcript" ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-white"
+            }`}
+          >
+            Transcript
           </button>
         </div>
-      </div>
 
-      {/* FOUR TABS NAV CONTROL */}
-      <div className="flex border-b border-slate-800">
-        <button
-          onClick={() => setActiveTab("summary")}
-          className={`flex-1 pb-3 text-xs font-bold flex items-center justify-center gap-2 border-b-2 transition-all ${
-            activeTab === "summary"
-              ? "border-indigo-500 text-indigo-400"
-              : "border-transparent text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <Sparkles className="w-4 h-4" />
-          Summary
-        </button>
+        {/* TAB CONTENTS */}
 
-        <button
-          onClick={() => setActiveTab("keypoints")}
-          className={`flex-1 pb-3 text-xs font-bold flex items-center justify-center gap-2 border-b-2 transition-all ${
-            activeTab === "keypoints"
-              ? "border-indigo-500 text-indigo-400"
-              : "border-transparent text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <CheckCircle2 className="w-4 h-4" />
-          Key Points
-        </button>
-
-        <button
-          onClick={() => setActiveTab("actionitems")}
-          className={`flex-1 pb-3 text-xs font-bold flex items-center justify-center gap-2 border-b-2 transition-all ${
-            activeTab === "actionitems"
-              ? "border-indigo-500 text-indigo-400"
-              : "border-transparent text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <ClipboardCheck className="w-4 h-4" />
-          Action Items
-        </button>
-
-        <button
-          onClick={() => setActiveTab("overall")}
-          className={`flex-1 pb-3 text-xs font-bold flex items-center justify-center gap-2 border-b-2 transition-all ${
-            activeTab === "overall"
-              ? "border-indigo-500 text-indigo-400"
-              : "border-transparent text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          Overall Matter
-        </button>
-      </div>
-
-      {/* ACTIVE TAB CONTENT WINDOW */}
-      <div className="space-y-6">
-        
-        {/* Tab 1: Summary */}
+        {/* 1. Summary */}
         {activeTab === "summary" && (
-          <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-md animate-fade-in">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
-              <div className="space-y-0.5">
-                <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-                  <Sparkles className="w-4.5 h-4.5 text-indigo-400" />
-                  Meeting Summary
-                </h2>
-                <p className="text-slate-400 text-[10px]">
-                  An AI-generated executive digest highlighting core topics, contexts, and outcomes.
-                </p>
-              </div>
-              
+          <div className="space-y-4 animate-fade-in">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-indigo-400" />
+                Executive Summary
+              </h3>
               <button
                 onClick={copySummary}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                  copiedSummary
-                    ? "bg-emerald-600/20 border-emerald-500/30 text-emerald-300"
-                    : "bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900 text-slate-400 hover:text-white"
-                }`}
+                className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
               >
                 {copiedSummary ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                {copiedSummary ? "Copied!" : "Copy Summary"}
+                <span>{copiedSummary ? "Copied" : "Copy"}</span>
               </button>
             </div>
-
-            {meeting.summary ? (
-              <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap pl-3.5 border-l-2 border-indigo-500/40">
-                {meeting.summary}
-              </p>
-            ) : (
-              <p className="text-xs text-slate-500 italic">No summary generated.</p>
-            )}
+            <p className="text-sm text-slate-300 leading-relaxed bg-slate-950/60 p-5 rounded-2xl border border-slate-800/80">
+              {currentMeeting.summary || "No summary available for this record."}
+            </p>
           </div>
         )}
 
-        {/* Tab 2: Key Points */}
+        {/* 2. Key Takeaways */}
         {activeTab === "keypoints" && (
-          <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-md animate-fade-in">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
-              <div className="space-y-0.5">
-                <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-                  <CheckCircle2 className="w-4.5 h-4.5 text-indigo-400" />
-                  Takeaways & Key Points
-                </h2>
-                <p className="text-slate-400 text-[10px]">
-                  A bulleted breakdown of crucial takeaways, decisions, and immediate actions.
-                </p>
-              </div>
-              
-              <button
-                onClick={copyKeyPoints}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                  copiedKeyPoints
-                    ? "bg-emerald-600/20 border-emerald-500/30 text-emerald-300"
-                    : "bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900 text-slate-400 hover:text-white"
-                }`}
-              >
-                {copiedKeyPoints ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                {copiedKeyPoints ? "Copied!" : "Copy Key Points"}
-              </button>
-            </div>
-
-            {meeting.keyPoints && meeting.keyPoints.length > 0 ? (
-              <ul className="space-y-3 pl-1 text-sm text-slate-300">
-                {meeting.keyPoints.map((point, index) => (
-                  <li key={index} className="flex gap-3 items-start">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-2 shrink-0"></span>
-                    <span className="leading-relaxed flex-1">{point}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-xs text-slate-500 italic">No key points extracted.</p>
-            )}
+          <div className="space-y-3 animate-fade-in">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-2">
+              <Sparkles className="w-4 h-4 text-indigo-400" />
+              Key Takeaways
+            </h3>
+            <ul className="space-y-2.5">
+              {(currentMeeting.keyPoints || currentMeeting.points || []).map((kp, idx) => (
+                <li key={idx} className="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 text-xs text-slate-200 flex items-start gap-3">
+                  <span className="w-5 h-5 rounded-full bg-indigo-500/10 text-indigo-400 font-mono text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                    {idx + 1}
+                  </span>
+                  <span className="leading-relaxed">{kp}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
-        {/* Tab 3: Action Items */}
+        {/* 3. Action Items with Completion Checkboxes */}
         {activeTab === "actionitems" && (
-          <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-md animate-fade-in">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
-              <div className="space-y-0.5">
-                <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-                  <ClipboardCheck className="w-4.5 h-4.5 text-indigo-400" />
-                  Structured Action Items
-                </h2>
-                <p className="text-slate-400 text-[10px]">
-                  Extracted list of deliverables, owners, and targets.
-                </p>
-              </div>
-              
-              <button
-                onClick={copyActionItems}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                  copiedActionItems
-                    ? "bg-emerald-600/20 border-emerald-500/30 text-emerald-300"
-                    : "bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900 text-slate-400 hover:text-white"
-                }`}
-              >
-                {copiedActionItems ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                {copiedActionItems ? "Copied!" : "Copy Action Items"}
-              </button>
-            </div>
-
-            {meeting.actionItems && meeting.actionItems.length > 0 ? (
-              <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/40">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-900 border-b border-slate-800 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                      <th className="p-3.5">Action Task</th>
-                      <th className="p-3.5 w-32">Owner</th>
-                      <th className="p-3.5 w-32">Deadline</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-900">
-                    {meeting.actionItems.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-slate-900/30 transition-colors">
-                        <td className="p-3.5 font-medium text-slate-200 leading-relaxed">
-                          {item.task}
-                        </td>
-                        <td className="p-3.5">
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                            {item.owner}
-                          </span>
-                        </td>
-                        <td className="p-3.5">
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 font-mono">
-                            {item.deadline}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          <div className="space-y-3 animate-fade-in">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              Action Items & Assignments
+            </h3>
+            {!currentMeeting.actionItems || currentMeeting.actionItems.length === 0 ? (
+              <p className="text-xs text-slate-500 italic p-4">No action items were assigned in this meeting.</p>
             ) : (
-              <p className="text-xs text-slate-500 italic">No structured action items extracted.</p>
+              <div className="space-y-2.5">
+                {currentMeeting.actionItems.map((item, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => toggleActionItem(idx)}
+                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start justify-between gap-4 ${
+                      item.completed
+                        ? "bg-emerald-950/20 border-emerald-800/50 text-slate-400"
+                        : "bg-slate-950 border-slate-800 text-white hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={!!item.completed}
+                        onChange={() => {}} // Handled by parent div onClick
+                        className="w-4 h-4 mt-0.5 accent-indigo-500 rounded cursor-pointer"
+                      />
+                      <div className="space-y-1">
+                        <p className={`text-xs font-semibold ${item.completed ? "line-through text-slate-400" : "text-white"}`}>
+                          {item.task}
+                        </p>
+                        <div className="flex items-center gap-3 text-[10px] font-mono text-slate-400">
+                          <span>Owner: <strong className="text-indigo-300">{item.owner}</strong></span>
+                          <span>•</span>
+                          <span>Deadline: <strong className="text-amber-300">{item.deadline}</strong></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}
 
-        {/* Tab 4: Overall Matter (Transcript & Timeline) */}
-        {activeTab === "overall" && (
-          <div className="space-y-6 animate-fade-in">
-            
-            {/* Timeline Segment */}
-            <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-md">
-              <div>
-                <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-                  <ClipboardCheck className="w-4.5 h-4.5 text-indigo-400" />
-                  Chronological Timeline
-                </h2>
-                <p className="text-slate-400 text-[10px] mt-0.5">
-                  Flow diagram of meeting statements presented in the exact chronological sequence.
-                </p>
-              </div>
-
-              {meeting.points && meeting.points.length > 0 ? (
-                <div className="space-y-3.5">
-                  {meeting.points.map((point, index) => (
-                    <div
-                      key={index}
-                      className="group flex gap-3.5 items-start bg-slate-950/20 border border-slate-800/50 hover:border-slate-800 hover:bg-slate-900/30 p-3.5 rounded-xl transition-all"
-                    >
-                      <div className="w-5.5 h-5.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center shrink-0 text-[11px]">
-                        {index + 1}
-                      </div>
-                      
-                      <p className="text-slate-300 text-xs leading-relaxed flex-1 pt-0.5">
-                        {point}
-                      </p>
-
-                      <button
-                        onClick={() => copyToClipboard(point, index)}
-                        className="p-1 text-slate-500 hover:text-white rounded hover:bg-slate-850 opacity-0 group-hover:opacity-100 transition-all shrink-0"
-                      >
-                        {copiedIndex === index ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-slate-500 italic">No timeline points extracted.</p>
-              )}
+        {/* 4. Follow-up Email Draft */}
+        {activeTab === "email" && (
+          <div className="space-y-4 animate-fade-in">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Mail className="w-4 h-4 text-indigo-400" />
+                Automated Follow-up Email Draft
+              </h3>
+              <button
+                onClick={copyEmail}
+                className="py-1.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md"
+              >
+                {copiedEmail ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedEmail ? "Copied Draft" : "Copy Email Draft"}</span>
+              </button>
             </div>
 
-            {/* Full Word-for-Word Transcript */}
-            <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-md">
-              <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
-                <div>
-                  <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-                    <FileText className="w-4.5 h-4.5 text-indigo-400" />
-                    Overall Matter (Full Transcript)
-                  </h2>
-                  <p className="text-slate-400 text-[10px] mt-0.5">
-                    Word-for-word dialogue records transcribed directly from the audio file.
-                  </p>
-                </div>
-                
-                <button
-                  onClick={copyTranscript}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                    copiedTranscript
-                      ? "bg-emerald-600/20 border-emerald-500/30 text-emerald-300"
-                      : "bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900 text-slate-400 hover:text-white"
-                  }`}
-                >
-                  {copiedTranscript ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  {copiedTranscript ? "Copied!" : "Copy Transcript"}
-                </button>
-              </div>
-
-              {meeting.transcript ? (
-                <div className="max-h-[340px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
-                  <p className="text-slate-300 text-xs leading-relaxed whitespace-pre-wrap pl-3.5 border-l-2 border-indigo-500/40 font-mono">
-                    {meeting.transcript}
-                  </p>
-                </div>
-              ) : (
-                <p className="text-xs text-slate-500 italic">No transcript generated.</p>
-              )}
-            </div>
-
+            <pre className="bg-slate-950 p-5 rounded-2xl border border-slate-800 text-xs font-mono text-slate-200 whitespace-pre-wrap leading-relaxed overflow-x-auto">
+              {currentMeeting.emailDraft ||
+                `Subject: Meeting Recap: ${currentMeeting.title}\n\nHi Team,\n\nHere is a recap of our recent session:\n\nSummary:\n${currentMeeting.summary}\n\nAction Items:\n` +
+                  (currentMeeting.actionItems || []).map((a) => `- ${a.task} (Owner: ${a.owner}, Deadline: ${a.deadline})`).join("\n") +
+                  `\n\nBest regards,\nAI Meeting Assistant`}
+            </pre>
           </div>
         )}
 
+        {/* 5. Full Speaker Transcript */}
+        {activeTab === "transcript" && (
+          <div className="space-y-4 animate-fade-in">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <FileText className="w-4 h-4 text-indigo-400" />
+              Speaker Turn Transcript
+            </h3>
+            <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">
+              {currentMeeting.transcript || "No transcript available."}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

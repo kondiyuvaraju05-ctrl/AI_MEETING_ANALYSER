@@ -1,12 +1,13 @@
 // Mock SQL Relational Database Adapter representing User Database
 export interface UserRecord {
+  id: string;
   email: string;
   createdAt: string;
 }
 
 // In-memory simulated SQL store
 const sqlStore: Map<string, UserRecord> = new Map([
-  ["admin@meetinghub.com", { email: "admin@meetinghub.com", createdAt: new Date().toISOString() }]
+  ["admin@meetinghub.com", { id: "usr_admin", email: "admin@meetinghub.com", createdAt: new Date().toISOString() }]
 ]);
 
 export const sqlMock = {
@@ -20,6 +21,7 @@ export const sqlMock = {
     console.log(`[SQL DB] INSERT INTO users (email, created_at) VALUES ('${email}', NOW())`);
     await new Promise(resolve => setTimeout(resolve, 150));
     const user: UserRecord = {
+      id: `usr_${Math.random().toString(36).substring(2, 10)}`,
       email: email.toLowerCase(),
       createdAt: new Date().toISOString()
     };

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Search, Calendar, Clock, ArrowRight, Trash2, Clipboard, AlignLeft } from "lucide-react";
+import React, { useState } from "react";
+import { Search, Calendar, Clock, ArrowRight, Trash2, Clipboard, AlignLeft, Sparkles, Filter, CheckCircle2 } from "lucide-react";
 import { RecordItem } from "../types";
 
 interface MeetingHistoryProps {
@@ -10,8 +10,12 @@ interface MeetingHistoryProps {
 
 export default function MeetingHistory({ meetings, onSelectMeeting, onDeleteMeeting }: MeetingHistoryProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [dateFilter, setDateFilter] = useState<"all" | "today" | "week" | "older">("all");
-  const [durationFilter, setDurationFilter] = useState<"all" | "short" | "medium" | "long">("all");
+  const [searchMode, setSearchMode] = useState<"keyword" | "semantic">("keyword");
+  const [categoryFilter, setCategoryFilter] = useState<string>("All");
+  const [isSearchingSemantic, setIsSearchingSemantic] = useState(false);
+  const [semanticResults, setSemanticResults] = useState<any[] | null>(null);
+
+  const activeMeetings = meetings.filter((m) => !m.isDeleted);
 
   const formatDuration = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -19,118 +23,151 @@ export default function MeetingHistory({ meetings, onSelectMeeting, onDeleteMeet
     return `${mins}m ${remainingSecs}s`;
   };
 
-  const filteredMeetings = meetings.filter((meeting) => {
-    const search = searchQuery.toLowerCase();
-    const matchesSearch = 
-      meeting.title.toLowerCase().includes(search) ||
-      (meeting.points?.some((point) => point.toLowerCase().includes(search)) || false) ||
-      (meeting.transcript?.toLowerCase().includes(search) || false);
-
-    let matchesDate = true;
-    if (dateFilter !== "all") {
-      const meetingDate = new Date(meeting.date);
-      const now = new Date();
-      const diffTime = Math.abs(now.getTime() - meetingDate.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      if (dateFilter === "today") {
-        matchesDate = diffDays <= 1;
-      } else if (dateFilter === "week") {
-        matchesDate = diffDays <= 7;
-      } else if (dateFilter === "older") {
-        matchesDate = diffDays > 7;
-      }
+  const handleSemanticSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) {
+      setSemanticResults(null);
+      return;
     }
 
-    let matchesDuration = true;
-    if (durationFilter !== "all") {
-      const mins = meeting.duration / 60;
-      if (durationFilter === "short") {
-        matchesDuration = mins <= 1;
-      } else if (durationFilter === "medium") {
-        matchesDuration = mins > 1 && mins <= 5;
-      } else if (durationFilter === "long") {
-        matchesDuration = mins > 5;
-      }
-    }
+    if (searchMode === "keyword") return;
 
-    return matchesSearch && matchesDate && matchesDuration;
-  });
+    setIsSearchingSemantic(true);
+    try {
+      const response = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: searchQuery,
+          mode: "semantic",
+          category: categoryFilter,
+        }),
+      });
+
+      const data = await response.json();
+      if (response.ok && data.results) {
+        setSemanticResults(data.results);
+      }
+    } catch (err) {
+      console.error("Semantic search error:", err);
+    } finally {
+      setIsSearchingSemantic(false);
+    }
+  };
+
+  const displayMeetings = (searchMode === "semantic" && semanticResults)
+    ? semanticResults
+    : activeMeetings.filter((meeting) => {
+        const search = searchQuery.toLowerCase();
+        const matchesCategory = categoryFilter === "All" || meeting.category === categoryFilter;
+
+        const matchesSearch = !searchQuery.trim() ||
+          meeting.title.toLowerCase().includes(search) ||
+          (meeting.summary?.toLowerCase().includes(search) || false) ||
+          (meeting.points?.some((point) => point.toLowerCase().includes(search)) || false) ||
+          (meeting.transcript?.toLowerCase().includes(search) || false);
+
+        return matchesCategory && matchesSearch;
+      });
 
   return (
-    <div className="w-full max-w-3xl mx-auto space-y-6">
-      {/* Search Header */}
-      <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-xl font-bold text-white tracking-tight">
-            Saved Sessions & Points
-          </h2>
-          <p className="text-slate-400 text-xs">
-            Review and copy previously transcribed point-form sessions.
-          </p>
-        </div>
+    <div className="w-full max-w-4xl mx-auto space-y-6 animate-fade-in">
+      <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-xl space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+              <span>Saved Meeting History</span>
+              <span className="text-[10px] bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-2 py-0.5 rounded-full font-mono">
+                Dual-Mode Search
+              </span>
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Search past meetings using instant keyword matching or Gemini semantic scoring.
+            </p>
+          </div>
 
-        <div className="relative w-full md:w-80">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Search titles or transcript points..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl pl-10 pr-4 py-2 text-sm text-white placeholder-slate-500 outline-none transition-all"
-          />
-        </div>
-      </div>
-
-      {/* Advanced Filter Categories */}
-      <div className="bg-slate-900/40 border border-slate-800/80 p-4 rounded-2xl space-y-3.5">
-        {/* Date Category */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider w-16">Date:</span>
-          {(["all", "today", "week", "older"] as const).map((filter) => (
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 self-start md:self-auto">
             <button
-              key={filter}
-              onClick={() => setDateFilter(filter)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                dateFilter === filter
-                  ? "bg-indigo-600 border-indigo-500 text-white shadow-sm"
-                  : "bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white"
+              onClick={() => { setSearchMode("keyword"); setSemanticResults(null); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                searchMode === "keyword" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
               }`}
             >
-              {filter === "all" ? "All Dates" : filter === "today" ? "Today" : filter === "week" ? "This Week" : "Older"}
+              Keyword Search
             </button>
-          ))}
-        </div>
-
-        {/* Duration Category */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider w-16">Duration:</span>
-          {(["all", "short", "medium", "long"] as const).map((filter) => (
             <button
-              key={filter}
-              onClick={() => setDurationFilter(filter)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                durationFilter === filter
-                  ? "bg-indigo-600 border-indigo-500 text-white shadow-sm"
-                  : "bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white"
+              onClick={() => setSearchMode("semantic")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                searchMode === "semantic" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
               }`}
             >
-              {filter === "all" ? "All" : filter === "short" ? "Quick (< 1m)" : filter === "medium" ? "Medium (1m - 5m)" : "Detailed (> 5m)"}
+              <Sparkles className="w-3 h-3 text-indigo-300" />
+              <span>Semantic AI</span>
             </button>
-          ))}
+          </div>
         </div>
+
+        <form onSubmit={handleSemanticSearch} className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <input
+              type="text"
+              placeholder={searchMode === "semantic" ? "Enter semantic topic, query, or decision..." : "Search titles, text, action items..."}
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                if (searchMode === "semantic") setSemanticResults(null);
+              }}
+              className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none"
+            />
+          </div>
+
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="bg-slate-950 border border-slate-800 text-xs font-bold text-slate-200 px-3.5 py-2.5 rounded-xl outline-none focus:border-indigo-500 cursor-pointer"
+          >
+            <option value="All">All Categories</option>
+            <option value="Engineering">Engineering</option>
+            <option value="Marketing">Marketing</option>
+            <option value="Infrastructure">Infrastructure</option>
+            <option value="Sales">Sales</option>
+            <option value="General">General</option>
+          </select>
+
+          {searchMode === "semantic" && (
+            <button
+              type="submit"
+              disabled={isSearchingSemantic || !searchQuery.trim()}
+              className="py-2.5 px-5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 text-white font-bold text-xs rounded-xl transition-all shadow-md shrink-0 flex items-center justify-center gap-1.5"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>{isSearchingSemantic ? "Scoring..." : "Run AI Search"}</span>
+            </button>
+          )}
+        </form>
       </div>
 
-      {filteredMeetings.length > 0 ? (
+      {displayMeetings.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredMeetings.map((meeting) => (
+          {displayMeetings.map((meeting: any) => (
             <div
-              key={meeting.id}
+              key={meeting.id || meeting._id}
               className="bg-slate-900 border border-slate-800 hover:border-indigo-500/50 rounded-2xl p-5 shadow-lg flex flex-col justify-between hover:translate-y-[-2px] transition-all relative overflow-hidden group"
             >
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-2 py-0.5 rounded-full font-mono uppercase tracking-wider">
+                        {meeting.category || "General"}
+                      </span>
+                      {meeting.relevanceScore !== undefined && (
+                        <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono">
+                          Relevance: {meeting.relevanceScore}%
+                        </span>
+                      )}
+                    </div>
                     <h3
                       onClick={() => onSelectMeeting(meeting)}
                       className="text-base font-bold text-white group-hover:text-indigo-400 cursor-pointer transition-colors line-clamp-1"
@@ -141,46 +178,38 @@ export default function MeetingHistory({ meetings, onSelectMeeting, onDeleteMeet
                   </div>
 
                   <button
-                    onClick={() => onDeleteMeeting(meeting.id)}
-                    className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
-                    title="Delete record"
+                    onClick={() => onDeleteMeeting(meeting.id || meeting._id)}
+                    className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                    title="Move to Recycle Bin"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
 
-                {/* Short excerpt of the first transcribed point */}
-                {meeting.points && meeting.points.length > 0 ? (
-                  <p className="text-slate-400 text-xs line-clamp-2 leading-relaxed pt-1">
-                    • {meeting.points[0]}
-                  </p>
-                ) : (
-                  <p className="text-slate-500 text-xs italic">No points extracted.</p>
-                )}
+                <p className="text-slate-400 text-xs line-clamp-2 leading-relaxed">
+                  {meeting.summary || meeting.points?.[0] || "No summary available."}
+                </p>
               </div>
 
-              {/* Card Footer */}
-              <div className="flex items-center justify-between border-t border-slate-800/80 mt-4 pt-3 text-xs">
-                <div className="flex items-center gap-3 font-mono text-slate-500">
+              <div className="flex items-center justify-between border-t border-slate-800 mt-4 pt-3 text-xs">
+                <div className="flex items-center gap-3 font-mono text-slate-500 text-[11px]">
                   <div className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5 text-indigo-500/70" />
-                    <span>{formatDuration(meeting.duration)}</span>
+                    <span>{formatDuration(meeting.duration || 120)}</span>
                   </div>
-
-                  <div className="flex items-center gap-1">
-                    <AlignLeft className="w-3.5 h-3.5 text-indigo-400" />
-                    <span className="text-slate-300 font-bold">
-                      {meeting.points?.length || 0}
-                    </span>
-                    <span>points</span>
-                  </div>
+                  {meeting.actionItems && (
+                    <div className="flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>{meeting.actionItems.length} tasks</span>
+                    </div>
+                  )}
                 </div>
 
                 <button
                   onClick={() => onSelectMeeting(meeting)}
                   className="flex items-center gap-1 text-indigo-400 hover:text-white font-semibold transition-colors"
                 >
-                  View Points
+                  View Details
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -193,11 +222,9 @@ export default function MeetingHistory({ meetings, onSelectMeeting, onDeleteMeet
             <Clipboard className="w-8 h-8" />
           </div>
           <div className="space-y-1.5">
-            <h3 className="text-base font-semibold text-white">No Conversions Found</h3>
+            <h3 className="text-base font-semibold text-white">No Sessions Found</h3>
             <p className="text-slate-400 text-xs leading-relaxed max-w-xs mx-auto">
-              {searchQuery
-                ? "We couldn't find any results matching your search terms. Try searching for other words."
-                : "No recordings or audio transcriptions yet. Start recording above!"}
+              No matching records for your search terms or category filter.
             </p>
           </div>
         </div>

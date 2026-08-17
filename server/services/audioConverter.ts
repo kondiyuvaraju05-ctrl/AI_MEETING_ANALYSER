@@ -66,13 +66,19 @@ export async function ensureCompatibleAudioFormat(
   payload: AudioPayload
 ): Promise<ConversionResult> {
   const { audio, mimeType } = payload;
+  const lowerMime = (mimeType || "").toLowerCase();
 
   if (!isConversionNeeded(mimeType)) {
     console.log(`[AudioConverter] MimeType '${mimeType}' is standard. Skipping conversion.`);
     return { audio, mimeType, converted: false };
   }
 
-  console.log(`[AudioConverter] Intercepted unsupported/non-standard format '${mimeType}'. Converting to WAV...`);
+  const isVideoInput = lowerMime.includes("video") || lowerMime.includes("mp4") || lowerMime.includes("quicktime") || lowerMime.includes("mkv");
+  if (isVideoInput) {
+    console.log(`[AudioConverter] Intercepted video format '${mimeType}'. Extracting and converting audio track to WAV...`);
+  } else {
+    console.log(`[AudioConverter] Intercepted unsupported/non-standard audio format '${mimeType}'. Converting to WAV...`);
+  }
 
   // Strip base64 data prefix if present (e.g. data:audio/opus;base64,...)
   const base64Clean = audio.includes(",") ? audio.split(",")[1] : audio;
@@ -83,12 +89,12 @@ export async function ensureCompatibleAudioFormat(
 
   // Determine appropriate input file extension for ffmpeg hint
   let ext = ".tmp";
-  if (mimeType.includes("opus")) ext = ".opus";
-  else if (mimeType.includes("m4a")) ext = ".m4a";
-  else if (mimeType.includes("amr")) ext = ".amr";
-  else if (mimeType.includes("wma")) ext = ".wma";
-  else if (mimeType.includes("ogg")) ext = ".ogg";
-  else if (mimeType.includes("mp4") || mimeType.includes("aac") || mimeType.includes("video") || mimeType.includes("quicktime")) ext = ".mp4";
+  if (lowerMime.includes("opus")) ext = ".opus";
+  else if (lowerMime.includes("m4a")) ext = ".m4a";
+  else if (lowerMime.includes("amr")) ext = ".amr";
+  else if (lowerMime.includes("wma")) ext = ".wma";
+  else if (lowerMime.includes("ogg")) ext = ".ogg";
+  else if (lowerMime.includes("mp4") || lowerMime.includes("aac") || lowerMime.includes("video") || lowerMime.includes("quicktime") || lowerMime.includes("mkv") || lowerMime.includes("avi")) ext = ".mp4";
 
   const inputFilePath = path.join(tempDir, `input_${uniqueId}${ext}`);
   const outputFilePath = path.join(tempDir, `output_${uniqueId}.wav`);
