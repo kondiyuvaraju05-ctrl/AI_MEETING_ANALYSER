@@ -3,11 +3,11 @@ import path from "path";
 import dotenv from "dotenv";
 import http from "http";
 import { GoogleGenAI, Type } from "@google/genai";
-import { initSignalingServer } from "./server/services/signalingServer";
-import { authService, validatePassword, normalizeEmail } from "./server/services/authService";
-import { meetingService } from "./server/services/meetingService";
-import { notificationService } from "./server/services/notificationService";
-import { ensureCompatibleAudioFormat } from "./server/services/audioConverter";
+import { initSignalingServer } from "./server/services/signalingServer.js";
+import { authService, validatePassword, normalizeEmail } from "./server/services/authService.js";
+import { meetingService } from "./server/services/meetingService.js";
+import { notificationService } from "./server/services/notificationService.js";
+import { ensureCompatibleAudioFormat } from "./server/services/audioConverter.js";
 
 // Load environment variables
 dotenv.config();

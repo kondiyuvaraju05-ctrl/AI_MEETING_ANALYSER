@@ -1,4 +1,4 @@
-import { mongoMock, MongoMeetingDocument } from "../db/mongoMock";
+import { mongoMock, MongoMeetingDocument } from "../db/mongoMock.js";
 
 export const meetingService = {
   async saveMeetingRecord(record: Omit<MongoMeetingDocument, "_id">) {

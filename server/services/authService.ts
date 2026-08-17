@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import { sqlMock } from "../db/sqlMock";
+import { sqlMock } from "../db/sqlMock.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "ai_meeting_assistant_jwt_secret_key_2026_super_secure";
 
