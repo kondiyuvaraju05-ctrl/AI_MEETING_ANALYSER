@@ -3,7 +3,6 @@ import path from "path";
 import dotenv from "dotenv";
 import http from "http";
 import { GoogleGenAI, Type } from "@google/genai";
-import { createServer as createViteServer } from "vite";
 import { initSignalingServer } from "./server/services/signalingServer";
 import { authService, validatePassword, normalizeEmail } from "./server/services/authService";
 import { meetingService } from "./server/services/meetingService";
@@ -623,7 +622,8 @@ app.all("/api/*", (req, res) => {
 
 // Setup Vite Dev Server / Static files
 async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
