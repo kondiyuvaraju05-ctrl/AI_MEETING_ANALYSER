@@ -74,7 +74,13 @@ export default function MeetingDetail({ meeting, onBack, onUpdateMeeting }: Meet
         }),
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error(`Translation server error (${response.status}): ${responseText.slice(0, 100) || response.statusText}`);
+      }
       if (!response.ok || !data.translated) {
         throw new Error(data.error || "Translation failed.");
       }

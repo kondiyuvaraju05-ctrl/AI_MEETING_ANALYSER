@@ -51,7 +51,15 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: normEmail, password }),
       });
-      const data = await response.json();
+      const responseText = await response.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        if (!response.ok) {
+          throw new Error(`Server error (${response.status}): ${responseText.slice(0, 100) || response.statusText}`);
+        }
+      }
 
       if (response.status === 404 || data.notFound) {
         setIsLoading(false);
@@ -103,7 +111,15 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: normEmail, password }),
       });
-      const data = await response.json();
+      const responseText = await response.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        if (!response.ok) {
+          throw new Error(`Server error (${response.status}): ${responseText.slice(0, 100) || response.statusText}`);
+        }
+      }
 
       if (response.status === 409 || data.alreadyExists) {
         setIsLoading(false);

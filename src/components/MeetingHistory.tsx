@@ -44,7 +44,13 @@ export default function MeetingHistory({ meetings, onSelectMeeting, onDeleteMeet
         }),
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        return;
+      }
       if (response.ok && data.results) {
         setSemanticResults(data.results);
       }

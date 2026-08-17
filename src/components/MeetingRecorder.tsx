@@ -242,7 +242,16 @@ export default function MeetingRecorder({
         }),
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        if (!response.ok) {
+          throw new Error(`Server error (${response.status}): ${responseText.slice(0, 120) || response.statusText}`);
+        }
+        throw new Error("Invalid response format received from server.");
+      }
       if (!response.ok) throw new Error(data.error || "Failed to process meeting file.");
 
       const newRecord: RecordItem = {
@@ -298,7 +307,16 @@ export default function MeetingRecorder({
         }),
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        if (!response.ok) {
+          throw new Error(`Server error (${response.status}): ${responseText.slice(0, 120) || response.statusText}`);
+        }
+        throw new Error("Invalid response format received from server.");
+      }
       if (!response.ok) throw new Error(data.error || "Failed to process manual notes.");
 
       const wordCount = manualNotes.trim().split(/\s+/).length;

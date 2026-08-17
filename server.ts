@@ -203,7 +203,7 @@ Generate a structured JSON output with:
 
 Return valid JSON adhering to the specified schema.`;
 
-    const candidateModels = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"];
+    const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
     let textResult: string | null = null;
 
     for (const modelName of candidateModels) {
@@ -307,7 +307,7 @@ Meeting Title: "${meetingTitle || "Untitled Recording"}"
 
 Return JSON matching the schema.`;
 
-    const candidateModels = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"];
+    const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
     let textResult: string | null = null;
 
     for (const modelName of candidateModels) {
@@ -614,6 +614,11 @@ Return a JSON array of objects:
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Search failed." });
   }
+});
+
+// JSON 404 Fallback Handler for any unmatched /api/* routes
+app.all("/api/*", (req, res) => {
+  res.status(404).json({ error: `API route '${req.originalUrl}' not found.` });
 });
 
 // Setup Vite Dev Server / Static files
